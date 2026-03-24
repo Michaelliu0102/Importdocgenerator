@@ -1,0 +1,495 @@
+# 供应商和产品映射配置
+# 根据实际业务填写供应商信息、产品信息及其对应的申报要素
+
+suppliers:
+  # 供应商代码: 供应商名称
+  supplier_001:
+    name: "供应商A"
+    country: "日本"
+    # 供应商地址
+    address: "东京都朝阳区xxx町1-2-3"
+    # 联系人
+    contact: "田中太郎"
+    # 贸易方式
+    trade_term: "CIF"
+    # 结算方式
+    payment_term: "T/T 30天"
+
+  alcantara:
+    name: "Alcantara S.p.A."
+    country: "意大利"
+    address: "Via Mecenate, 86, 20138 Milano, Italia"
+    contact: ""
+    trade_term: "FCA"  # 根据Invoice: FCA2010
+    payment_term: "60 DAYS NET"  # 根据Invoice
+    tax_id: "IT00835580150"
+    bank_info: |
+      BANCO BPM: IBAN: IT79O0503401659000000002900
+      INTESA SANPAOLO: IBAN: DE09700208006008018500
+      MUFG BANK: IBAN: IT65W0348701600000015504178 (Euro)
+
+  crest_leather:
+    name: "Crest JMT Leather Ltd."
+    country: "英国"
+    address: "Ground Floor, Meridian House, Suite A, 202-204 Finchley Road, London, NW3 6BX, UK"
+    contact: ""
+    trade_term: "EXW"
+    payment_term: "Payment Before Delivery"
+    tax_id: "GB 980 0976 94"
+    bank_info: |
+      National Westminster Bank: Sort Code:600905, Account:140/00/73173088
+      Swift Code: NWBKGB2L
+      Correspondent Bank: JP Morgan Chase Bank, Swift: CHASUS33XXX
+
+  deca_global:
+    name: "DECA GLOBAL S.R.L."
+    country: "意大利"
+    address: "Via Vincenzo Monti 8, Milano MI 20123, Italy"
+    contact: ""
+    trade_term: "EXW"
+    payment_term: "100% TT IN ADVANCE"
+    tax_id: "IT13273070964"
+    bank_info: |
+      UNICREDIT SPA: BIC/SWIFT: UNCRITM1228
+      IBAN: IT58C0200801628000107076875
+
+  wipelli:
+    name: "WIPELLI INTERNATIONAL SRL"
+    country: "意大利"
+    address: "Via Cadorna, 26-36071 Arzignano (VI), Italy"
+    contact: ""
+    trade_term: "EX WORKS"
+    payment_term: "30 DAYS INVOICE DATE"
+    tax_id: "IT03355020243"
+    bank_info: |
+      BANCO DESIO: BIC/SWIFT BDBDIT22
+      IBAN: IT74 D034 4060 1210 0000 0252 400
+
+  mastrotto:
+    name: "Mastrotto (待确认)"
+    country: "待确认"
+    address: ""
+    contact: ""
+    trade_term: ""
+    payment_term: ""
+    tax_id: ""
+    bank_info: ""
+
+  west_trading:
+    name: "West Trading"
+    country: "荷兰"
+    address: "DE DROOGMAKERIJ 43, NL-1851 LX HEILOO"
+    contact: "TEL 0031(0)72 - 533 05 91"
+    trade_term: "DAP (Incoterms 2020)"
+    payment_term: "Paid in advance"
+    tax_id: "NL 817 984 999 B01"
+    bank_info: |
+      IBAN: NL27RABO0327004126
+      BIC/SWIFT: RABONL2U
+
+  supplier_002:
+    name: "供应商B"
+    country: "德国"
+    address: "汉堡市xxx大道45号"
+    contact: "Hans Mueller"
+    trade_term: "FOB"
+    payment_term: "T/T 45天"
+
+# 产品类别映射
+product_categories:
+  # ============================================
+  # Alcantara 产品 (供应商: Alcantara S.p.A. 或 DECA GLOBAL S.R.L.)
+  # HS Code规则: item前4位为5012则HS为5603149000
+  #              item前4位为5015/5030/5010则HS为5603149000
+  # ============================================
+
+  alcantara_5012:
+    name: "Alcantara® 汽车装饰用材料"
+    category: "纺织面料"
+    sub_category: "非织造布"
+    hs_code: "5603149000"
+    supplier: ["alcantara", "deca_global"]
+    # 申报要素
+    declaration_elements:
+      # 1:加工方法
+      加工方法: "针刺"
+      # 2:化学纤维长丝制应注明
+      化学纤维长丝制: "化学纤维长丝制"
+      # 3:每平方米克重
+      每平方米克重: "克/平方米"
+      # 4:成分含量
+      成分含量: "68%聚酯纤维 32%聚氨酯"
+      # 5:用途
+      用途: "用于汽车内部装饰/家具包覆"
+      # 6:品牌
+      品牌: "Alcantara牌"
+      # 7:型号
+      型号: "无"
+    # 法定单位
+    legal_unit: "米"
+    # 第二法定单位
+    second_unit: "千克"
+    # 监管条件
+    supervision: "无"
+    # 检验检疫类别
+    inspection: "L"
+    # 产品代码前缀匹配
+    item_code_prefix: "5012"
+
+  alcantara_5015_5030_5010:
+    name: "Alcantara® 面料"
+    category: "纺织面料"
+    sub_category: "非织造布"
+    hs_code: "5603149000"
+    supplier: ["alcantara", "deca_global"]
+    # 申报要素
+    declaration_elements:
+      # 1:加工方法
+      加工方法: "针刺"
+      # 2:化学纤维长丝制应注明
+      化学纤维长丝制: "化学纤维长丝制"
+      # 3:每平方米克重
+      每平方米克重: "克/平方米"
+      # 4:成分含量
+      成分含量: "68%聚酯纤维 32%聚氨酯"
+      # 5:用途
+      用途: "用于汽车内部装饰/家具包覆"
+      # 6:品牌
+      品牌: "Alcantara牌"
+      # 7:型号
+      型号: "无"
+    # 法定单位
+    legal_unit: "米"
+    # 第二法定单位
+    second_unit: "千克"
+    # 监管条件
+    supervision: "无"
+    # 检验检疫类别
+    inspection: "L"
+    # 产品代码前缀匹配 (5015, 5030, 5010)
+    item_code_prefix: ["5015", "5030", "5010"]
+
+  # ============================================
+  # 其他产品类别 (根据申报要素.docx)
+  # ============================================
+
+  cowhide_leather:
+    name: "牛皮"
+    category: "皮革"
+    sub_category: "头层皮"
+    hs_code: "41071291"
+    supplier: ["crest_leather", "wipelli", "mastrotto"]
+    hide_type: "HIDES"
+    declaration_elements:
+      品名: "牛皮"
+      制作或保存方法: "涂覆颜色涂层"
+      种类: "牛"
+      状态: "整张，无毛粒面剖层"
+      濒危: "不是源于濒危野生牛或马"
+      规格: "厚度0.8-1.4mm，平均面积： 平方米"
+      颜色: ""
+      用途: "皮具或家具"
+      是否油鞣: "非油鞣"
+      牛皮层: "头层"
+      净重: " KG"
+    legal_unit: "张"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  cowhide_half_hide:
+    name: "牛皮"
+    category: "皮革"
+    sub_category: "头层皮"
+    hs_code: "4107920090"
+    supplier: ["crest_leather", "wipelli", "mastrotto"]
+    hide_type: "HALF HIDES"
+    declaration_elements:
+      品名: "牛皮"
+      制作或保存方法: "涂覆颜色涂层"
+      种类: "牛"
+      状态: "非整张，无毛粒面剖层"
+      濒危: "不是源于濒危野生牛或马"
+      规格: "厚度0.8-1.4mm，平均面积： 平方米"
+      颜色: ""
+      用途: "皮具或家具"
+      是否油鞣: "非油鞣"
+      牛皮层: "头层"
+      净重: " KG"
+    legal_unit: "张"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  synthetic_leather:
+    name: "人造革"
+    category: "人造革"
+    sub_category: "PVC人造革"
+    hs_code: "3921121000"
+    supplier: ""  # 待填写
+    declaration_elements:
+      品牌类型: "境外品牌"
+      出口享惠情况: "不适用进口"
+      成分: "84%聚氯乙烯1%聚氨酯15%棉"
+      外观: "黑色成卷"
+      是否与其他材料合制: "是与其他材料合制"
+      泡沫塑料: "泡沫塑料"
+      用途: "家具包覆用"
+      规格尺寸: "1.35mm厚度 140cm宽幅，长度30米"
+      品牌: "skai"
+      型号: ""
+      其他: "织物仅起增强作用"
+    legal_unit: "千克"
+    second_unit: ""
+    supervision: ""
+    inspection: ""
+
+  wool_fabric_low:
+    name: "面料（羊毛含量低于85%）"
+    category: "纺织面料"
+    sub_category: "毛织品"
+    hs_code: "5112200000"
+    supplier: ""  # 待填写
+    declaration_elements:
+      成分: "62%羊毛，38%涤纶"
+      幅宽: "1.45米"
+      克重: "450g/m2"
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  wool_fabric_high_polyester:
+    name: "面料（羊毛含量高于85%，涤纶）"
+    category: "纺织面料"
+    sub_category: "毛织品"
+    hs_code: "5407520091"
+    supplier: ""  # 待填写
+    declaration_elements:
+      织造工艺: "机织"
+      染色: "染色"
+      组织: "平纹"
+      成分: "100%涤纶"
+      幅宽: "145cm"
+      克重: "450g/m2"
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  wool_fabric_high_nylon:
+    name: "面料（羊毛含量高于85%，尼龙）"
+    category: "纺织面料"
+    sub_category: "毛织品"
+    hs_code: "5112190000"
+    supplier: "west_trading"
+    declaration_elements:
+      织造工艺: "机织"
+      精梳: "精梳"
+      成分: "92%羊毛，8%尼龙"
+      幅宽: "1.45米"
+      克重: "450g/m2"
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  # West Trading面料产品 - 根据成分动态确定HS Code
+  wool_fabric_62_38:
+    name: "面料（62%羊毛/38%涤纶）"
+    category: "纺织面料"
+    sub_category: "毛织品"
+    hs_code: "5112200000"  # 羊毛<85%
+    supplier: "west_trading"
+    composition_pattern: "62% wool / 38% pes"  # 匹配模式
+    declaration_elements:
+      成分: "62%羊毛，38%涤纶"
+      幅宽: ""
+      克重: ""
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  wool_fabric_92_8:
+    name: "面料（92%羊毛/8%涤纶）"
+    category: "纺织面料"
+    sub_category: "毛织品"
+    hs_code: "5112190000"  # 羊毛≥85%
+    supplier: "west_trading"
+    composition_pattern: "92% wool / 8% pes"  # 匹配模式
+    declaration_elements:
+      成分: "92%羊毛，8%涤纶"
+      幅宽: ""
+      克重: ""
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  polyester_fabric_100:
+    name: "面料（100%涤纶）"
+    category: "纺织面料"
+    sub_category: "涤纶面料"
+    hs_code: "5407520091"  # 100%涤纶
+    supplier: "west_trading"
+    composition_pattern: "100% pes"  # 匹配模式
+    declaration_elements:
+      织造工艺: "机织"
+      染色: "染色"
+      组织: "平纹"
+      成分: "100%涤纶"
+      幅宽: ""
+      克重: ""
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  # 通用的面料产品（当无法确定具体成分时使用）
+  fabric_general:
+    name: "面料"
+    category: "纺织面料"
+    sub_category: "面料"
+    hs_code: ""  # 待人工确认
+    supplier: ""  # 待确认
+    declaration_elements:
+      成分: ""
+      幅宽: ""
+      克重: ""
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  hdm:
+    name: "Higher Dimension Materials, Inc."
+    country: "美国"
+    address: "570 Hale Avenue North, Saint Paul, Oakdale MN 55128, United States"
+    contact: ""
+    trade_term: "CIF"  # 待确认
+    payment_term: "Prepaid"
+    tax_id: ""
+    bank_info: |
+      U.S. Bank N.A., Minneapolis, MN
+      Swift: USBKUS44IMT
+      ABA: 091000022
+      Account: 104787889583
+
+  # HDM涂层织物产品
+  coated_fabric_hdm:
+    name: "涂层织物"
+    category: "涂层织物"
+    sub_category: "涂布织物"
+    hs_code: "59039090"
+    supplier: "hdm"
+    declaration_elements:
+      品名: "涂层织物"
+      处理材质: "聚酯纤维底材，表面附着环氧树脂颗粒"
+      成分含量: "50%聚酯纤维，50%环氧树脂"
+      处理工艺: "涂布（Coating）"
+      是否双面涂层或包覆: "非双面涂层"
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+  konrad_hornschuch:
+    name: "Konrad Hornschuch GmbH"
+    country: "德国"
+    address: "德国"  # 待补充完整地址
+    contact: ""
+    trade_term: ""  # 待确认
+    payment_term: ""
+    tax_id: ""
+    bank_info: ""
+
+  synthetic_leather_konrad:
+    name: "人造革"
+    category: "人造革"
+    sub_category: "PVC人造革"
+    hs_code: "3921121000"
+    supplier: "konrad_hornschuch"
+    declaration_elements:
+      品牌类型: "境外品牌"
+      出口享惠情况: "不适用进口"
+      成分: ""  # 待确认
+      外观: ""  # 待确认
+      是否与其他材料合制: ""  # 待确认
+      泡沫塑料: ""  # 待确认
+      用途: ""  # 待确认
+      规格尺寸: ""  # 待确认
+      品牌: ""  # 待确认
+      型号: ""
+      其他: ""
+    legal_unit: "千克"
+    second_unit: ""
+    supervision: ""
+    inspection: ""
+
+  mabo:
+    name: "MABO International GmbH"
+    country: "德国"
+    address: "Gewerbering 27a, 41372 Niederkrüchten, Deutschland"
+    contact: ""
+    trade_term: "EX WORKS"
+    payment_term: "Net 30 days"
+    tax_id: "DE231747973"
+    bank_info: |
+      Commerzbank Mönchengladbach: IBAN DE79 3108 0015 0920 5664 00
+      Sparkasse Krefeld: IBAN DE77 3205 0000 0012 0454 80, BIC SPKRDE33
+
+  # MABO可能供应的面料产品（Alcantara microfibre）
+  mabo_alcantara_fabric:
+    name: "Alcantara® 超细纤维面料"
+    category: "纺织面料"
+    sub_category: "非织造布"
+    hs_code: "5603149000"
+    supplier: "mabo"
+    # 申报要素
+    declaration_elements:
+      加工方法: "针刺"
+      化学纤维长丝制: "化学纤维长丝制"
+      每平方米克重: "克/平方米"
+      成分含量: "68%聚酯纤维 32%聚氨酯"
+      用途: "用于汽车内部装饰/家具包覆"
+      品牌: "Alcantara牌"
+      型号: "无"
+    legal_unit: "米"
+    second_unit: "千克"
+    supervision: "无"
+    inspection: "L"
+
+  # MABO可能供应的牛皮产品
+  mabo_cowhide:
+    name: "牛皮"
+    category: "皮革"
+    sub_category: "头层皮"
+    hs_code: "4107121090"
+    supplier: "mabo"
+    declaration_elements:
+      涂覆: "涂覆颜色涂层"
+      粒面层: "无毛粒面剖层"
+      动物种类: "牛，不是源于濒危野生牛"
+      规格: "整张，头层皮"
+      颜色: "等"
+      用途: "用于家具包覆"
+      鞣制: "非油鞣"
+      计量单位: "张"
+    legal_unit: "张"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
+
+# 合同模板映射
+contract_templates:
+  # 根据供应商或产品类型选择不同模板
+  default: "合同模板.docx"
+
+# 报关单模板映射
+customs_declaration_templates:
+  default: "报关单模板.docx"
+
+# 申报要素模板映射
+declaration_element_templates:
+  default: "申报要素模板.docx"

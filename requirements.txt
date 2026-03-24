@@ -1,0 +1,12 @@
+# PDF parsing
+pypdf>=4.0.0
+
+# Word document handling
+python-docx>=1.1.0
+
+# Data handling
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# Configuration
+pyyaml>=6.0
