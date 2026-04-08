@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox
 
 from main import CustomsDocGenerator
 
-APP_VERSION = "v4.0"
+APP_VERSION = "v4.3"
 
 try:
     from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -26,34 +26,40 @@ except Exception:
 # Set True in main() only if TkinterDnD.Tk() initializes (matches this Tk build).
 HAS_DND = False
 
-BG        = "#f0f4f8"
-DROP_BG   = "#d4e6ff"
-DROP_BD   = "#5599dd"
-LIST_BG   = "#ffffff"
-STAT_BG   = "#fffde6"
-ACCENT    = "#2060b0"
-BTN_GRAY  = "#aaaaaa"
-FG        = "#1a1a1a"
-FG_DIM    = "#666666"
+BG            = "#f0f4f8"
+DROP_BG_IMPORT = "#d4e6ff"
+DROP_BG_EXPORT = "#d8f0e0"
+DROP_BD_IMPORT = "#5599dd"
+DROP_BD_EXPORT = "#44aa77"
+LIST_BG       = "#ffffff"
+STAT_BG       = "#fffde6"
+ACCENT        = "#2060b0"
+BTN_GRAY      = "#aaaaaa"
+FG            = "#1a1a1a"
+FG_DIM        = "#666666"
 
 
 class CustomsDocGUI:
     def __init__(self, root):
         self.root = root
         self.root.title(f"报关资料生成器 {APP_VERSION}")
-        self.root.geometry("960x740")
-        self.root.minsize(860, 620)
+        self.root.geometry("1100x820")
+        self.root.minsize(960, 680)
         self.root.configure(bg=BG)
 
         self.base_dir = Path(__file__).resolve().parent
-        self.invoice_paths: list[str] = []
-        self.invoice_display: list[str] = []
+        self.import_paths: list[str] = []
+        self.import_display: list[str] = []
+        self.export_paths: list[str] = []
+        self.export_display: list[str] = []
         self.last_output_folder = None
         self.output_dir_var = tk.StringVar(value=str(self.base_dir / "output"))
         self.ocr_enabled_var = tk.BooleanVar(value=True)
         self.ocr_lang_var = tk.StringVar(value="eng")
+        self.export_fx_var = tk.StringVar(value="")
+        self._want_eur_invoice_pdf = False  # toggled by Checkbutton command callback
         self.status_var = tk.StringVar(
-            value="请先添加 PDF，再点击「开始生成」。")
+            value="左侧进口 Invoice PDF；右侧出口请同时添加 CustInvc 发票与 ItemShip 装箱单 PDF；选择输出目录后生成。")
 
         self._build_ui()
 
@@ -61,109 +67,142 @@ class CustomsDocGUI:
         outer = tk.Frame(self.root, bg=BG, padx=18, pady=14)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(5, weight=1)
+        outer.rowconfigure(1, weight=1)
 
         row = 0
 
-        # ── 标题 ──────────────────────────────────────────────
         tk.Label(
             outer,
-            text=f"Invoice 自动生成报关资料   {APP_VERSION}",
+            text=f"进口 / 出口 报关资料生成   {APP_VERSION}",
             font=("Helvetica", 17, "bold"),
             fg=FG, bg=BG, anchor="w",
-        ).grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        ).grid(row=row, column=0, sticky="ew", pady=(0, 6))
         row += 1
 
-        # ── 拖拽区标题 ────────────────────────────────────────
+        # ── 双栏：进口 | 出口 ─────────────────────────────────
+        dual = tk.Frame(outer, bg=BG)
+        dual.grid(row=row, column=0, sticky="nsew", pady=(0, 8))
+        dual.columnconfigure(0, weight=1)
+        dual.columnconfigure(1, weight=1)
+        dual.rowconfigure(1, weight=1)
+        row += 1
+
         tk.Label(
-            outer,
-            text="▼  拖拽区域  ——  将 PDF / 文件夹拖到下方框中",
-            font=("Helvetica", 11, "bold"),
-            fg=FG, bg=BG, anchor="w",
-        ).grid(row=row, column=0, sticky="ew", pady=(0, 3))
-        row += 1
+            dual, text="进口资料（Invoice PDF）",
+            font=("Helvetica", 11, "bold"), fg=FG, bg=BG, anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        tk.Label(
+            dual, text="出口资料（发票/装箱单等，PDF）",
+            font=("Helvetica", 11, "bold"), fg=FG, bg=BG, anchor="w",
+        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
-        # ── 拖拽区域（Canvas）─────────────────────────────────
-        drop = tk.Canvas(
-            outer, height=100, bg=DROP_BG,
-            highlightthickness=2, highlightbackground=DROP_BD,
+        left = tk.Frame(dual, bg=BG)
+        left.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
+        left.columnconfigure(0, weight=1)
+        left.rowconfigure(2, weight=1)
+
+        right = tk.Frame(dual, bg=BG)
+        right.grid(row=1, column=1, sticky="nsew", padx=(6, 0))
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(2, weight=1)
+
+        self.drop_zone_import = tk.Canvas(
+            left, height=88, bg=DROP_BG_IMPORT,
+            highlightthickness=2, highlightbackground=DROP_BD_IMPORT,
             cursor="hand2",
         )
-        drop.grid(row=row, column=0, sticky="ew", pady=(0, 10))
-        self.drop_zone = drop
+        self.drop_zone_import.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self._bind_drop_redraw(
+            self.drop_zone_import,
+            "将进口 PDF / 文件夹拖到此区域",
+        )
 
-        def _redraw(event=None):
-            drop.delete("all")
-            w = max(drop.winfo_width(), 400)
-            drop.create_text(
-                w // 2, 36,
-                text="将 PDF 文件 / 文件夹拖拽到此区域",
-                font=("Helvetica", 14, "bold"), fill="#1a4080",
-            )
-            if HAS_DND:
-                hint, color = "也可使用下方「添加文件」按钮", "#555555"
-            elif TKINTERDND2_IMPORTED:
-                hint, color = (
-                    "⚠ 拖拽不可用 — tkdnd 与当前 Tk 不兼容，请用「添加文件」",
-                    "#cc0000",
-                )
-            else:
-                hint, color = ("⚠ 拖拽不可用 — 请安装 tkinterdnd2 后重启",
-                               "#cc0000")
-            drop.create_text(
-                w // 2, 66,
-                text=hint, font=("Helvetica", 10), fill=color,
-            )
+        imp_btns = tk.Frame(left, bg=BG)
+        imp_btns.grid(row=1, column=0, sticky="ew", pady=(0, 4))
+        tk.Button(
+            imp_btns, text="添加进口文件...",
+            command=self._choose_import_files,
+        ).pack(side="left")
+        tk.Button(
+            imp_btns, text="移除选中",
+            command=self._remove_selected_import,
+        ).pack(side="left", padx=(8, 0))
+        tk.Button(
+            imp_btns, text="清空",
+            command=self._clear_import,
+        ).pack(side="left", padx=(8, 0))
 
-        drop.bind("<Configure>", _redraw)
-        self.root.after(80, _redraw)
-        row += 1
-
-        # ── 文件列表标题 ──────────────────────────────────────
-        tk.Label(
-            outer,
-            text="▼  已添加文件列表（双击行可删除）",
-            font=("Helvetica", 11, "bold"),
-            fg=FG, bg=BG, anchor="w",
-        ).grid(row=row, column=0, sticky="ew", pady=(0, 3))
-        row += 1
-
-        # ── 按钮行 ────────────────────────────────────────────
-        btn_f = tk.Frame(outer, bg=BG)
-        btn_f.grid(row=row, column=0, sticky="ew", pady=(0, 4))
-        row += 1
-        tk.Button(btn_f, text="添加文件...",
-                  command=self._choose_invoice_files).pack(side="left")
-        tk.Button(btn_f, text="移除选中",
-                  command=self._remove_selected).pack(
-            side="left", padx=(8, 0))
-        tk.Button(btn_f, text="清空列表",
-                  command=self._clear_files).pack(
-            side="left", padx=(8, 0))
-        tk.Label(btn_f, text="（仅显示文件名）",
-                 fg=FG_DIM, bg=BG,
-                 font=("Helvetica", 10)).pack(side="left", padx=(14, 0))
-
-        # ── 文件列表 ──────────────────────────────────────────
-        list_f = tk.Frame(outer, bg=BG)
-        list_f.grid(row=row, column=0, sticky="nsew", pady=(0, 8))
-        row += 1
-        list_f.columnconfigure(0, weight=1)
-        list_f.rowconfigure(0, weight=1)
-        self.file_listbox = tk.Listbox(
-            list_f, selectmode="extended", height=7,
-            font=("Helvetica", 12),
+        limp = tk.Frame(left, bg=BG)
+        limp.grid(row=2, column=0, sticky="nsew")
+        limp.columnconfigure(0, weight=1)
+        limp.rowconfigure(0, weight=1)
+        self.file_listbox_import = tk.Listbox(
+            limp, selectmode="extended", height=6,
+            font=("Helvetica", 11),
             bg=LIST_BG, fg=FG,
             selectbackground=ACCENT, selectforeground="white",
             bd=1, relief="solid",
         )
-        self.file_listbox.grid(row=0, column=0, sticky="nsew")
-        vsb = tk.Scrollbar(list_f, orient="vertical",
-                           command=self.file_listbox.yview)
-        vsb.grid(row=0, column=1, sticky="ns")
-        self.file_listbox.config(yscrollcommand=vsb.set)
-        self.file_listbox.bind("<Double-Button-1>",
-                               lambda e: self._remove_selected())
+        self.file_listbox_import.grid(row=0, column=0, sticky="nsew")
+        vsb_i = tk.Scrollbar(
+            limp, orient="vertical",
+            command=self.file_listbox_import.yview,
+        )
+        vsb_i.grid(row=0, column=1, sticky="ns")
+        self.file_listbox_import.config(yscrollcommand=vsb_i.set)
+        self.file_listbox_import.bind(
+            "<Double-Button-1>",
+            lambda e: self._remove_selected_import(),
+        )
+
+        self.drop_zone_export = tk.Canvas(
+            right, height=88, bg=DROP_BG_EXPORT,
+            highlightthickness=2, highlightbackground=DROP_BD_EXPORT,
+            cursor="hand2",
+        )
+        self.drop_zone_export.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self._bind_drop_redraw(
+            self.drop_zone_export,
+            "将出口 PDF / 文件夹拖到此区域",
+        )
+
+        exp_btns = tk.Frame(right, bg=BG)
+        exp_btns.grid(row=1, column=0, sticky="ew", pady=(0, 4))
+        tk.Button(
+            exp_btns, text="添加出口文件...",
+            command=self._choose_export_files,
+        ).pack(side="left")
+        tk.Button(
+            exp_btns, text="移除选中",
+            command=self._remove_selected_export,
+        ).pack(side="left", padx=(8, 0))
+        tk.Button(
+            exp_btns, text="清空",
+            command=self._clear_export,
+        ).pack(side="left", padx=(8, 0))
+
+        lexp = tk.Frame(right, bg=BG)
+        lexp.grid(row=2, column=0, sticky="nsew")
+        lexp.columnconfigure(0, weight=1)
+        lexp.rowconfigure(0, weight=1)
+        self.file_listbox_export = tk.Listbox(
+            lexp, selectmode="extended", height=6,
+            font=("Helvetica", 11),
+            bg=LIST_BG, fg=FG,
+            selectbackground=ACCENT, selectforeground="white",
+            bd=1, relief="solid",
+        )
+        self.file_listbox_export.grid(row=0, column=0, sticky="nsew")
+        vsb_e = tk.Scrollbar(
+            lexp, orient="vertical",
+            command=self.file_listbox_export.yview,
+        )
+        vsb_e.grid(row=0, column=1, sticky="ns")
+        self.file_listbox_export.config(yscrollcommand=vsb_e.set)
+        self.file_listbox_export.bind(
+            "<Double-Button-1>",
+            lambda e: self._remove_selected_export(),
+        )
 
         # ── 输出目录 ──────────────────────────────────────────
         out_f = tk.Frame(outer, bg=BG)
@@ -182,7 +221,7 @@ class CustomsDocGUI:
         ocr_f = tk.Frame(outer, bg=BG)
         ocr_f.grid(row=row, column=0, sticky="ew", pady=4)
         row += 1
-        tk.Checkbutton(ocr_f, text="自动 OCR（扫描件推荐开启）",
+        tk.Checkbutton(ocr_f, text="自动 OCR（扫描件推荐开启，仅进口解析）",
                        variable=self.ocr_enabled_var,
                        bg=BG, fg=FG, activebackground=BG,
                        font=("Helvetica", 11)).pack(side="left")
@@ -194,6 +233,49 @@ class CustomsDocGUI:
         tk.Label(ocr_f, text="如: eng / eng+ita",
                  fg=FG_DIM, bg=BG,
                  font=("Helvetica", 10)).pack(side="left", padx=(10, 0))
+
+        # ── 出口：是否生成 EUR 版 Invoice PDF ─────────────────
+        eur_pdf_f = tk.Frame(outer, bg=BG)
+        eur_pdf_f.grid(row=row, column=0, sticky="ew", pady=2)
+        row += 1
+        self._eur_invoice_pdf_cb = tk.Checkbutton(
+            eur_pdf_f,
+            text="生成 EUR 版 Invoice PDF（CustInvc_…，在原 PDF 上替换为欧元；未勾选则不生成该 PDF）",
+            command=self._toggle_eur_pdf,
+            bg=BG,
+            fg=FG,
+            activebackground=BG,
+            font=("Helvetica", 11),
+        )
+        self._eur_invoice_pdf_cb.pack(side="left", anchor="w")
+
+        # ── 出口 EUR 汇率（可选）──────────────────────────────
+        fx_f = tk.Frame(outer, bg=BG)
+        fx_f.grid(row=row, column=0, sticky="ew", pady=4)
+        row += 1
+        tk.Label(
+            fx_f,
+            text="出口 EUR 汇率：1 EUR =",
+            fg=FG, bg=BG,
+            font=("Helvetica", 11),
+        ).pack(side="left")
+        # 保存引用：焦点仍在输入框时点「开始生成」时，StringVar 可能尚未同步，需用 Entry.get()。
+        self.fx_entry = tk.Entry(
+            fx_f,
+            textvariable=self.export_fx_var,
+            width=14,
+            fg=FG,
+            bg="white",
+            font=("Helvetica", 11),
+        )
+        self.fx_entry.pack(side="left", padx=(6, 4))
+        tk.Label(
+            fx_f,
+            text="单位发票货币（非 EUR 时填汇率；留空则出口合同/报关单等仍用原币种）",
+            fg=FG_DIM,
+            bg=BG,
+            font=("Helvetica", 10),
+        ).pack(side="left")
 
         # ── 操作按钮 ──────────────────────────────────────────
         act_f = tk.Frame(outer, bg=BG)
@@ -230,29 +312,70 @@ class CustomsDocGUI:
 
         # ── 注册 DnD ──────────────────────────────────────────
         if HAS_DND:
-            for w in (self.drop_zone, self.file_listbox):
+            for w in (
+                self.drop_zone_import,
+                self.drop_zone_export,
+                self.file_listbox_import,
+                self.file_listbox_export,
+            ):
                 try:
                     w.drop_target_register(DND_FILES)
-                    w.dnd_bind("<<Drop>>", self._on_drop_files)
                 except tk.TclError:
-                    pass
+                    continue
+            self.drop_zone_import.dnd_bind(
+                "<<Drop>>", self._on_drop_import)
+            self.drop_zone_export.dnd_bind(
+                "<<Drop>>", self._on_drop_export)
+            self.file_listbox_import.dnd_bind(
+                "<<Drop>>", self._on_drop_import)
+            self.file_listbox_export.dnd_bind(
+                "<<Drop>>", self._on_drop_export)
             self._set_status(
-                "拖拽已启用。可将 PDF 拖入蓝色区域，或点击「添加文件」。")
+                "拖拽已启用。左栏进口、右栏出口；或点击「添加…文件」。")
         elif TKINTERDND2_IMPORTED:
             self._set_status(
-                "请点击「添加文件」导入 PDF。"
+                "请点击「添加…文件」导入 PDF。"
                 "（已安装 tkinterdnd2，但 tkdnd 与当前 Tk 不兼容，拖拽不可用）")
         else:
             self._set_status(
-                "请点击「添加文件」导入 PDF。"
+                "请点击「添加…文件」导入 PDF。"
                 "（安装 tkinterdnd2 可启用拖拽）")
+
+        self._update_run_btn()
+
+    def _bind_drop_redraw(self, canvas: tk.Canvas, main_text: str):
+        def _redraw(event=None):
+            canvas.delete("all")
+            w = max(canvas.winfo_width(), 200)
+            canvas.create_text(
+                w // 2, 28,
+                text=main_text,
+                font=("Helvetica", 12, "bold"), fill="#1a4080",
+            )
+            if HAS_DND:
+                hint, color = "或使用上方「添加…文件」", "#555555"
+            elif TKINTERDND2_IMPORTED:
+                hint, color = (
+                    "⚠ 拖拽不可用 — 请用「添加…文件」",
+                    "#cc0000",
+                )
+            else:
+                hint, color = ("⚠ 拖拽不可用 — 请安装 tkinterdnd2",
+                               "#cc0000")
+            canvas.create_text(
+                w // 2, 56,
+                text=hint, font=("Helvetica", 9), fill=color,
+            )
+
+        canvas.bind("<Configure>", _redraw)
+        self.root.after(80, _redraw)
 
     # ------------------------------------------------------------------
     def _update_run_btn(self):
         """Gray when not ready, blue when ready."""
-        has_files = bool(self.invoice_paths)
+        has_any = bool(self.import_paths or self.export_paths)
         has_output = bool(self.output_dir_var.get().strip())
-        if has_files and has_output:
+        if has_any and has_output:
             self._run_btn_enabled = True
             self.run_btn.config(bg=ACCENT, fg="white", cursor="hand2")
         else:
@@ -268,12 +391,19 @@ class CustomsDocGUI:
         self.status_var.set(text)
         self.root.update_idletasks()
 
-    def _choose_invoice_files(self):
+    def _choose_import_files(self):
         paths = filedialog.askopenfilenames(
-            title="选择一个或多个 Invoice PDF",
+            title="选择进口 Invoice PDF",
             filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
         )
-        self._add_files(paths)
+        self._add_import_files(paths)
+
+    def _choose_export_files(self):
+        paths = filedialog.askopenfilenames(
+            title="选择出口资料 PDF",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+        )
+        self._add_export_files(paths)
 
     def _choose_output_dir(self):
         path = filedialog.askdirectory(title="选择输出目录")
@@ -306,34 +436,59 @@ class CustomsDocGUI:
                 unique.append(x)
         return unique
 
-    def _add_files(self, paths):
+    def _add_import_files(self, paths):
         if not paths:
             return
         for path in self._expand_paths(paths):
-            if path not in self.invoice_paths:
-                self.invoice_paths.append(path)
-                display = Path(path).name
-                self.invoice_display.append(display)
-                self.file_listbox.insert("end", display)
+            if path not in self.import_paths:
+                self.import_paths.append(path)
+                self.import_display.append(Path(path).name)
+                self.file_listbox_import.insert("end", Path(path).name)
         self._update_run_btn()
 
-    def _remove_selected(self):
-        selected = list(self.file_listbox.curselection())
+    def _add_export_files(self, paths):
+        if not paths:
+            return
+        for path in self._expand_paths(paths):
+            if path not in self.export_paths:
+                self.export_paths.append(path)
+                self.export_display.append(Path(path).name)
+                self.file_listbox_export.insert("end", Path(path).name)
+        self._update_run_btn()
+
+    def _remove_selected_import(self):
+        selected = list(self.file_listbox_import.curselection())
         if not selected:
             return
         for idx in reversed(selected):
-            self.file_listbox.delete(idx)
-            self.invoice_paths.pop(idx)
-            self.invoice_display.pop(idx)
+            self.file_listbox_import.delete(idx)
+            self.import_paths.pop(idx)
+            self.import_display.pop(idx)
         self._update_run_btn()
 
-    def _clear_files(self):
-        self.file_listbox.delete(0, "end")
-        self.invoice_paths.clear()
-        self.invoice_display.clear()
+    def _remove_selected_export(self):
+        selected = list(self.file_listbox_export.curselection())
+        if not selected:
+            return
+        for idx in reversed(selected):
+            self.file_listbox_export.delete(idx)
+            self.export_paths.pop(idx)
+            self.export_display.pop(idx)
         self._update_run_btn()
 
-    def _on_drop_files(self, event):
+    def _clear_import(self):
+        self.file_listbox_import.delete(0, "end")
+        self.import_paths.clear()
+        self.import_display.clear()
+        self._update_run_btn()
+
+    def _clear_export(self):
+        self.file_listbox_export.delete(0, "end")
+        self.export_paths.clear()
+        self.export_display.clear()
+        self._update_run_btn()
+
+    def _parse_drop_paths(self, event):
         raw = getattr(event, "data", "") or ""
         paths = []
         try:
@@ -346,7 +501,13 @@ class CustomsDocGUI:
                 s = s[1:-1]
             if s:
                 paths = [s]
-        self._add_files(paths)
+        return paths
+
+    def _on_drop_import(self, event):
+        self._add_import_files(self._parse_drop_paths(event))
+
+    def _on_drop_export(self, event):
+        self._add_export_files(self._parse_drop_paths(event))
 
     def _open_output_dir(self):
         out_dir = (Path(self.last_output_folder) if self.last_output_folder
@@ -357,39 +518,94 @@ class CustomsDocGUI:
         except Exception as e:
             messagebox.showerror("打开失败", f"无法打开输出目录:\n{e}")
 
+    def _toggle_eur_pdf(self):
+        """Checkbutton command callback — flip the plain Python bool each click."""
+        self._want_eur_invoice_pdf = not self._want_eur_invoice_pdf
+
+    def _read_eur_invoice_pdf_wanted(self) -> bool:
+        return self._want_eur_invoice_pdf
+
     def _start_generate(self):
         output_dir = self.output_dir_var.get().strip()
-        if not self.invoice_paths:
-            messagebox.showwarning("提示", "请先添加至少一个 Invoice PDF 文件")
+        if not self.import_paths and not self.export_paths:
+            messagebox.showwarning(
+                "提示",
+                "请至少在左侧或右侧添加一个 PDF 文件",
+            )
             return
-        missing = [p for p in self.invoice_paths if not Path(p).exists()]
-        if missing:
-            messagebox.showerror("错误",
-                                 f"有文件不存在，请检查:\n{missing[0]}")
-            return
+        for label, paths in (
+            ("进口", self.import_paths),
+            ("出口", self.export_paths),
+        ):
+            missing = [p for p in paths if not Path(p).exists()]
+            if missing:
+                messagebox.showerror(
+                    "错误",
+                    f"{label}文件不存在，请检查:\n{missing[0]}",
+                )
+                return
         if not output_dir:
             messagebox.showwarning("提示", "请先选择输出目录")
             return
 
+        self.root.update_idletasks()
+        # 以控件选中态为准（与汇率框同理，避免 Var 与 Tk 内部状态不一致）
+        generate_eur_invoice_pdf = self._read_eur_invoice_pdf_wanted()
+        fx_raw = (
+            self.fx_entry.get().strip()
+            if getattr(self, "fx_entry", None) is not None
+            else self.export_fx_var.get().strip()
+        )
+        fx_units_per_eur = None
+        if fx_raw:
+            try:
+                fx_units_per_eur = float(fx_raw.replace(",", "."))
+                if fx_units_per_eur <= 0:
+                    raise ValueError("rate must be positive")
+            except ValueError:
+                messagebox.showerror(
+                    "汇率无效",
+                    "请在「1 EUR = … 发票货币」中填写大于 0 的数字，或留空不换算。",
+                )
+                return
+
         enable_ocr = self.ocr_enabled_var.get()
         ocr_lang = self.ocr_lang_var.get().strip() or "eng"
-        invoice_paths = list(self.invoice_paths)
+        import_paths = list(self.import_paths)
+        export_paths = list(self.export_paths)
 
+        total = len(import_paths) + (1 if export_paths else 0)
         self._run_btn_enabled = False
         self.run_btn.config(bg=BTN_GRAY, fg="#dddddd", cursor="arrow")
-        self._set_status(
-            f"正在处理 {len(invoice_paths)} 份 PDF，请稍候...")
+        self._set_status(f"正在处理 {total} 个任务，请稍候...")
         threading.Thread(
             target=self._generate,
-            args=(output_dir, enable_ocr, ocr_lang, invoice_paths),
+            args=(
+                output_dir,
+                enable_ocr,
+                ocr_lang,
+                import_paths,
+                export_paths,
+                fx_units_per_eur,
+                generate_eur_invoice_pdf,
+            ),
             daemon=True,
         ).start()
 
-    def _generate(self, output_dir, enable_ocr, ocr_lang, invoice_paths):
-
+    def _generate(
+        self,
+        output_dir,
+        enable_ocr,
+        ocr_lang,
+        import_paths,
+        export_paths,
+        fx_units_per_eur=None,
+        generate_eur_invoice_pdf=False,
+    ):
         try:
             all_files = []
-            success_count = 0
+            success_import = 0
+            success_export = 0
             from datetime import datetime
             batch_folder = (
                 Path(output_dir).expanduser()
@@ -398,15 +614,23 @@ class CustomsDocGUI:
             batch_folder.mkdir(parents=True, exist_ok=True)
             self.last_output_folder = str(batch_folder)
 
-            for i, invoice_path in enumerate(invoice_paths, start=1):
+            n_imp = len(import_paths)
+            n_exp = len(export_paths)
+            exp_batch = 1 if n_exp else 0
+            total_tasks = n_imp + exp_batch
+            task_i = 0
+
+            for i, invoice_path in enumerate(import_paths, start=1):
+                task_i += 1
                 self.root.after(
                     0,
-                    lambda i=i, n=len(invoice_paths):
-                        self._set_status(f"处理中 {i}/{n} ..."),
+                    lambda ii=i, ti=task_i, ni=n_imp, tt=total_tasks:
+                    self._set_status(
+                        f"进口 {ii}/{ni}（总 {ti}/{tt}）..."),
                 )
                 raw_stem = Path(invoice_path).stem.strip() or f"invoice_{i}"
                 invoice_stem = re.sub(r'[\\/:*?"<>|]+', "_", raw_stem)
-                invoice_out = batch_folder / f"{i:02d}_{invoice_stem}"
+                invoice_out = batch_folder / f"import_{i:02d}_{invoice_stem}"
                 invoice_out.mkdir(parents=True, exist_ok=True)
 
                 generator = CustomsDocGenerator(
@@ -427,8 +651,42 @@ class CustomsDocGUI:
                             "declaration_elements"):
                     files.extend(result.get(key, []))
                 if files:
-                    success_count += 1
+                    success_import += 1
                     all_files.extend(files)
+
+            if export_paths:
+                task_i += 1
+                self.root.after(
+                    0,
+                    lambda ti=task_i, tt=total_tasks:
+                    self._set_status(
+                        f"出口（发票+装箱单，总 {ti}/{tt}）..."),
+                )
+                exp_out = batch_folder / "export_pack"
+                exp_out.mkdir(parents=True, exist_ok=True)
+
+                generator = CustomsDocGenerator(
+                    config_path=str(
+                        self.base_dir / "data"
+                        / "supplier_product_mapping.yaml"
+                    ),
+                    templates_dir=str(self.base_dir / "templates"),
+                    export_templates_dir=str(
+                        self.base_dir / "export_templates"
+                    ),
+                )
+                result = generator.process_export_documents(
+                    source_paths=export_paths,
+                    output_dir=str(exp_out),
+                    enable_ocr=enable_ocr,
+                    ocr_lang=ocr_lang,
+                    fx_units_per_eur=fx_units_per_eur,
+                    generate_eur_invoice_pdf=generate_eur_invoice_pdf,
+                )
+                ex_files = result.get("export", [])
+                if ex_files:
+                    success_export += 1
+                    all_files.extend(ex_files)
 
             if not all_files:
                 self.root.after(
@@ -446,7 +704,9 @@ class CustomsDocGUI:
                 if len(all_files) > 12:
                     preview += f"\n... 还有 {len(all_files) - 12} 个文件"
                 msg = (
-                    f"批量处理完成: {success_count}/{len(invoice_paths)} 成功\n"
+                    f"处理完成\n"
+                    f"进口成功: {success_import}/{n_imp}，"
+                    f"出口成功: {success_export}/{exp_batch}\n"
                     f"输出目录: {self.last_output_folder}\n\n"
                     f"已生成文件:\n{preview}"
                 )
@@ -455,17 +715,22 @@ class CustomsDocGUI:
                 self.root.after(
                     0,
                     lambda: self._set_status(
-                        f"处理完成：成功 {success_count}/{len(invoice_paths)}，"
-                        f"共生成 {len(all_files)} 个文件。"),
+                        f"完成：进口 {success_import}/{n_imp}，"
+                        f"出口 {success_export}/{exp_batch}，"
+                        f"共 {len(all_files)} 个文件。"),
                 )
                 self.root.after(0, self._open_output_dir)
         except Exception as e:
+            # Python 3.12+ 在离开 except 后会清除异常名 e，延后执行的 lambda 不能引用 e
+            err_msg = str(e)
             self.root.after(
                 0,
-                lambda: messagebox.showerror("处理失败", f"生成失败:\n{e}"),
+                lambda: messagebox.showerror("处理失败", f"生成失败:\n{err_msg}"),
             )
             self.root.after(
-                0, lambda: self._set_status(f"处理失败: {e}"))
+                0,
+                lambda: self._set_status(f"处理失败: {err_msg}"),
+            )
         finally:
             self.root.after(0, self._update_run_btn)
 

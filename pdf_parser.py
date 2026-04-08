@@ -5,6 +5,7 @@ PDF Invoice 解析模块
 """
 
 import re
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 
@@ -13,6 +14,49 @@ def _parse_euro_amount(s: str) -> str:
     s = s.replace("€", "").replace("\u00a0", " ").replace("$", "").strip()
     s = s.replace(" ", "").replace(".", "").replace(",", ".")
     return s
+
+
+def _parse_camari_cust_number(s: str) -> str:
+    """CustInvc-style amounts: US thousands comma, optional ¥ / € / ĉ / NBSP prefix (e.g. ĉ61,200)."""
+    s = (s or "").replace("¥", "").replace("€", "").replace("ĉ", "").replace("\u00a0", " ").strip()
+    return s.replace(",", "").strip()
+
+
+def strip_camari_bill_to_name_suffix(name: str) -> str:
+    """Bill To 首行常被抽成「公司名 - Tokyo」：Tokyo 来自 Ship To 列，与公司名拼在同一行，应从抬头去掉。"""
+    name = (name or "").strip()
+    if not name:
+        return ""
+    parts = name.split("\n", 1)
+    first = parts[0]
+    m = re.match(
+        r"^(.+?)\s*[-–]\s*("
+        r"Tokyo|Osaka|Nagoya|Kyoto|Fukuoka|Yokohama|Kobe|Sapporo|Sendai|Hiroshima"
+        r")\s*$",
+        first,
+        re.IGNORECASE,
+    )
+    if m:
+        first = m.group(1).strip()
+    if len(parts) == 1:
+        return first
+    return first + "\n" + parts[1]
+
+
+def strip_ship_to_leaked_japan_from_camari_address(addr: str) -> str:
+    """Bill To / Ship To 双栏时，中间地址行末尾常误并入 Ship To 的国名「Japan」；最后一行保留国名。"""
+    addr = (addr or "").strip()
+    if not addr:
+        return ""
+    lines = [ln.strip() for ln in addr.split("\n") if ln.strip()]
+    if len(lines) <= 1:
+        return "\n".join(lines)
+    out: List[str] = []
+    for i, ln in enumerate(lines):
+        if i < len(lines) - 1:
+            ln = re.sub(r"\s+Japan\s*$", "", ln, flags=re.IGNORECASE).strip()
+        out.append(ln)
+    return "\n".join(out)
 
 
 class InvoiceParser:
@@ -25,7 +69,21 @@ class InvoiceParser:
         self._fmt: Optional[str] = None
 
     def extract_text(self) -> str:
+        # PyMuPDF 按阅读顺序抽字（sort=True）；pypdf 对「涂改+后插入」的 PDF 会把新字串排到文末，导致 camari 行项目无法解析。
+        try:
+            import fitz
+
+            doc = fitz.open(self.pdf_path)
+            text_parts = []
+            for page in doc:
+                text_parts.append(page.get_text(sort=True) or "")
+            doc.close()
+            self.raw_text = "\n".join(text_parts)
+            return self.raw_text
+        except Exception:
+            pass
         from pypdf import PdfReader
+
         reader = PdfReader(self.pdf_path)
         text_parts = []
         for page in reader.pages:
@@ -53,6 +111,20 @@ class InvoiceParser:
             return "continental"
         if "mastrotto" in t:
             return "mastrotto"
+        # CAMARI internal invoice (Zhejiang → e.g. Japan entity): CustInvc_*.pdf
+        stem = Path(self.pdf_path).stem.lower()
+        custinv_filename = "custinv" in stem or "custinvc" in stem
+        camari_table = (
+            "bill to" in t
+            and "ship to" in t
+            and re.search(r"#\s*item", t, re.IGNORECASE)
+        )
+        if camari_table and (
+            "camari trading (zhejiang)" in t
+            or ("camari" in t and "zhejiang" in t)
+            or custinv_filename
+        ):
+            return "camari_cust"
         return "generic"
 
     def parse(self) -> Dict[str, Any]:
@@ -64,11 +136,17 @@ class InvoiceParser:
 
         customs_items = self._aggregate_customs_items(items)
 
+        issuer_name, issuer_address = self._extract_issuer_for_contract()
+
         self.parsed_data = {
+            "format": self._fmt,
             "invoice_no": self._extract_invoice_number(),
             "invoice_date": self._extract_date(),
             "supplier_name": self._extract_supplier_name(),
             "buyer_name": self._extract_buyer_name(),
+            "buyer_address": self._extract_buyer_address(),
+            "issuer_name": issuer_name,
+            "issuer_address": issuer_address,
             "trade_term": self._extract_trade_term(),
             "country_of_origin": self._extract_country_of_origin(),
             "items": items,
@@ -149,6 +227,11 @@ class InvoiceParser:
             if m:
                 return m.group(1)
 
+        if fmt == "camari_cust":
+            m = re.search(r"Invoice\s*#\s*(\d{4,8})\b", self.raw_text, re.IGNORECASE)
+            if m:
+                return m.group(1)
+
         # Generic fallbacks
         patterns = [
             r"Invoice\s*#\s*(\d+)",
@@ -201,6 +284,15 @@ class InvoiceParser:
             if m:
                 return m.group(1)
 
+        if fmt == "camari_cust":
+            m = re.search(
+                r"Invoice\s*#\s*\d{4,8}\s*\n\s*(\d{1,2}/\d{1,2}/\d{4})\b",
+                self.raw_text,
+                re.IGNORECASE,
+            )
+            if m:
+                return m.group(1)
+
         # Generic date patterns (with word boundaries to avoid matching bank account numbers)
         patterns = [
             r"\b(\d{1,2}/\d{1,2}/\d{4})\b",
@@ -230,6 +322,10 @@ class InvoiceParser:
     # Supplier Name
     # =========================================================================
     def _extract_supplier_name(self) -> Optional[str]:
+        if self._fmt == "camari_cust":
+            name, _ = self._extract_camari_cust_issuer()
+            if name:
+                return name
         text = self.raw_text.lower()
         known = [
             ("alcantara", "s.p.a", "Alcantara S.p.A."),
@@ -253,8 +349,73 @@ class InvoiceParser:
     # Buyer Name
     # =========================================================================
     def _extract_buyer_name(self) -> Optional[str]:
+        if self._fmt == "camari_cust":
+            n, _ = self._extract_camari_cust_bill_to()
+            return n
         m = re.search(r"(CAMARI\s+(?:TRADING|INTERNATIONAL)[^\n]*)", self.raw_text, re.IGNORECASE)
         return m.group(1).strip() if m else None
+
+    def _extract_buyer_address(self) -> str:
+        if self._fmt == "camari_cust":
+            _, addr = self._extract_camari_cust_bill_to()
+            return addr or ""
+        return ""
+
+    def _extract_issuer_for_contract(self):
+        if self._fmt == "camari_cust":
+            return self._extract_camari_cust_issuer()
+        return None, None
+
+    def _extract_camari_cust_issuer(self):
+        """Seller block: lines immediately above the first standalone 'Invoice' title line."""
+        lines = self.raw_text.splitlines()
+        for i, line in enumerate(lines):
+            if line.strip() == "Invoice":
+                start = max(0, i - 4)
+                block = [lines[j].strip() for j in range(start, i) if lines[j].strip()]
+                if not block:
+                    return None, ""
+                return block[0], "\n".join(block[1:])
+        return None, ""
+
+    def _extract_camari_cust_bill_to(self):
+        """Bill To: first line = buyer name; following lines (up to 3) = buyer address."""
+        m = re.search(
+            r"Bill\s+To\s+Ship\s+To\s+TOTAL\s*\n(.+)",
+            self.raw_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not m:
+            return None, ""
+        chunk = m.group(1)
+        lines: List[str] = []
+        for raw in chunk.split("\n"):
+            ln = raw.strip()
+            if not ln:
+                continue
+            if ln.lower().startswith("memo:"):
+                break
+            # 全角 ￥ / 半角 ¥ / € / $ 开头视为金额行，不进入地址
+            if re.match(r"^[\u00a5\uffe5€$ĉ]", ln):
+                break
+            if ln.startswith("Terms ") and "Due Date" in ln:
+                break
+            # 同行末尾「Japan ￥ 232,454」：只保留金额前一段
+            ln = re.sub(
+                r"\s*[\u00a5\uffe5€]\s*[\d,]+(?:\.\d+)?\s*$",
+                "",
+                ln,
+            ).strip()
+            if not ln:
+                continue
+            lines.append(ln)
+        if len(lines) < 1:
+            return None, ""
+        bill = lines[:4]
+        name = strip_camari_bill_to_name_suffix(bill[0])
+        addr = "\n".join(bill[1:]) if len(bill) > 1 else ""
+        addr = strip_ship_to_leaked_japan_from_camari_address(addr)
+        return name, addr
 
     # =========================================================================
     # Trade Term
@@ -299,6 +460,15 @@ class InvoiceParser:
         if re.search(r"EX\s*WORKS|EX\s*W\b", self.raw_text, re.IGNORECASE):
             return "EXW"
 
+        # CustInvc: "1/4/2026 JPY Dap Sales Order"
+        if self._fmt == "camari_cust":
+            m = re.search(
+                r"\d{1,2}/\d{1,2}/\d{4}\s+(?:JPY|EUR|USD)\s+([A-Za-z]{2,4})\b",
+                self.raw_text,
+            )
+            if m:
+                return m.group(1).upper()
+
         return None
 
     # =========================================================================
@@ -332,6 +502,11 @@ class InvoiceParser:
     # =========================================================================
     def _extract_items(self) -> list:
         fmt = self._fmt
+
+        if fmt == "camari_cust":
+            items = self._parse_camari_cust_items()
+            if items:
+                return items
 
         if fmt == "alcantara":
             items = self._parse_alcantara_items()
@@ -531,6 +706,150 @@ class InvoiceParser:
                 "amount": amount,
             })
             i = j + 1
+        return items
+
+    def _parse_camari_cust_items(self) -> list:
+        """CAMARI CustInvc: supports (1) glued code+desc lines, (2) single-line items like
+        '1MF 1387 1.2mm 10 M ĉ1,440 0% ĉ14,400', (3) multi-line '2Seat Cover' + subtitle + data."""
+        t = (
+            self.raw_text.replace("ĉ", "¥")
+            .replace("€", "¥")
+            .replace("￥", "¥")
+            .replace("\u00a0", " ")
+        )
+        # pypdf 常为「# Item Quantity …」一行；PyMuPDF sort 可能为「#   Item」与「Quantity」大间距，不能用 "# item quantity" 连续子串。
+        m_hdr = re.search(r"#\s*item\s+", t, re.IGNORECASE)
+        idx = m_hdr.start() if m_hdr else -1
+        if idx < 0:
+            return []
+        chunk = t[idx:]
+        end = chunk.find("Bank Information")
+        if end > 0:
+            chunk = chunk[:end]
+        lines = [ln.strip() for ln in chunk.split("\n") if ln.strip()]
+        if not lines:
+            return []
+        lines = lines[1:]  # drop header row
+
+        data_re = re.compile(
+            r"^([\d.]+)\s+([A-Za-z]+)\s+¥?\s*([\d,]+(?:\.\d+)?)\s+\d+%\s+¥?\s*([\d,]+(?:\.\d+)?)\s*$"
+        )
+        _UNITS = r"M|PCS|SF|SQM|SET|PC|EA|KG|LM|YD|FT|ROLL|ROLLS|PAIR|PAIRS"
+        suffix_re = re.compile(
+            r"([\d.]+)\s+(" + _UNITS + r")\s+¥?\s*([\d,]+(?:\.\d+)?)\s+\d+%\s+¥?\s*([\d,]+(?:\.\d+)?)\s*$",
+            re.IGNORECASE,
+        )
+        next_item_re = re.compile(r"^(\d{1,3})([A-Za-z])")  # detects start of next item line
+        items: List[dict] = []
+        i = 0
+        while i < len(lines):
+            ln = lines[i]
+            if ln.startswith("Subtotal") or ln.startswith("Tax Total") or ln.startswith("Total"):
+                break
+
+            # --- Old: 15012290900 + desc line + data line ---
+            m_old = re.match(r"^(\d{1,2})(\d{8,12}[A-Z]{0,3})$", ln)
+            if m_old:
+                line_no = m_old.group(1)
+                item_code = m_old.group(2)
+                description = lines[i + 1].strip() if i + 1 < len(lines) else ""
+                data_idx = i + 2
+                if data_idx >= len(lines):
+                    break
+                dm = data_re.match(lines[data_idx])
+                if not dm:
+                    i += 1
+                    continue
+                qty, unit, unit_price_raw, amount_raw = dm.groups()
+                unit_price = _parse_camari_cust_number(unit_price_raw)
+                amount = _parse_camari_cust_number(amount_raw)
+                prefix_m = re.match(r"^(\d{4})", item_code)
+                items.append({
+                    "line_no": line_no,
+                    "item_code": item_code,
+                    "item_code_prefix": prefix_m.group(1) if prefix_m else "",
+                    "description": description.strip(),
+                    "quantity": qty,
+                    "unit": unit,
+                    "unit_price": unit_price,
+                    "amount": amount,
+                })
+                i = data_idx + 1
+                continue
+
+            # --- Single line: 1MF 1387 1.2mm 10 M ¥1,440 0% ¥14,400 ---
+            m_one = re.match(r"^(\d+)(.+)$", ln)
+            if m_one:
+                rest = m_one.group(2).strip()
+                sm = suffix_re.search(rest)
+                if sm:
+                    line_no = m_one.group(1)
+                    desc = rest[: sm.start()].strip()
+                    qty, unit, unit_price_raw, amount_raw = sm.groups()
+                    unit_price = _parse_camari_cust_number(unit_price_raw)
+                    amount = _parse_camari_cust_number(amount_raw)
+                    items.append({
+                        "line_no": line_no,
+                        "item_code": "",
+                        "item_code_prefix": "",
+                        "description": desc,
+                        "quantity": qty,
+                        "unit": unit,
+                        "unit_price": unit_price,
+                        "amount": amount,
+                    })
+                    i += 1
+                    continue
+
+            # --- Multi-line: 2Seat Cover / 4VERONA 5002 ---
+            m_head = re.match(r"^(\d+)([A-Za-z].*)$", ln)
+            if not m_head:
+                i += 1
+                continue
+            line_no = m_head.group(1)
+            desc = m_head.group(2).strip()
+            j = i + 1
+            data_line_idx = None
+            while j < len(lines):
+                if lines[j].startswith("Subtotal"):
+                    break
+                sm = suffix_re.search(lines[j])
+                if sm:
+                    data_line_idx = j
+                    if sm.start() > 0:
+                        desc = f"{desc} {lines[j][:sm.start()].strip()}".strip()
+                    break
+                if next_item_re.match(lines[j]) and j > i + 1:
+                    break
+                desc = f"{desc} {lines[j]}".strip()
+                j += 1
+            if data_line_idx is None:
+                i += 1
+                continue
+            sm = suffix_re.search(lines[data_line_idx])
+            if not sm:
+                i += 1
+                continue
+            qty, unit, unit_price_raw, amount_raw = sm.groups()
+            unit_price = _parse_camari_cust_number(unit_price_raw)
+            amount = _parse_camari_cust_number(amount_raw)
+            item_code = ""
+            digits = re.sub(r"\D", "", desc)
+            prefix_m = (
+                re.match(r"^(\d{4})", digits) if len(digits) >= 4 else None
+            )
+            items.append({
+                "line_no": line_no,
+                "item_code": item_code,
+                "item_code_prefix": prefix_m.group(1) if prefix_m else "",
+                "description": desc.strip(),
+                "quantity": qty,
+                "unit": unit,
+                "unit_price": unit_price,
+                "amount": amount,
+            })
+            i = data_line_idx + 1
+
         return items
 
     def _parse_crest_items(self) -> list:
@@ -954,6 +1273,21 @@ class InvoiceParser:
     # Compute Total
     # =========================================================================
     def _compute_total(self, items: list) -> Optional[str]:
+        if self._fmt == "camari_cust":
+            t = self.raw_text.replace("ĉ", "¥").replace("\u00a0", " ")
+            before_bank = t.split("Bank Information")[0]
+            for line in before_bank.split("\n"):
+                s = line.strip()
+                if not s.startswith("Total") or s.startswith("Tax Total"):
+                    continue
+                m = re.search(
+                    r"Total\s*[¥ĉ€]?\s*([\d,]+(?:\.\d+)?)\s*$",
+                    s,
+                    re.IGNORECASE,
+                )
+                if m:
+                    return _parse_camari_cust_number(m.group(1))
+
         if items:
             total = 0
             for item in items:
@@ -1018,6 +1352,21 @@ class InvoiceParser:
     # Currency
     # =========================================================================
     def _extract_currency(self) -> Optional[str]:
+        # CustInvc：正文为 JPY，但第 2 页银行账号含 (EUR)/(USD)，不能先看全文字符串
+        if self._fmt == "camari_cust":
+            # pypdf 常把 Terms 压成一行，如 "4/4/2026 JPY232,454=127"（币种与金额间无空格），
+            # 旧正则要求币种后必须有空格，会漏匹配并误落到下面的 \bEUR\b（例如 "2EUR" 碎片）。
+            m = re.search(
+                r"\d{1,2}/\d{1,2}/\d{4}\s+(JPY|EUR|USD)",
+                self.raw_text,
+            )
+            if m:
+                return m.group(1)
+            if re.search(r"\bJPY\b", self.raw_text):
+                return "JPY"
+            if re.search(r"\bEUR\b", self.raw_text):
+                return "EUR"
+
         text = self.raw_text
         if "EUR" in text or "€" in text or "Eur" in text:
             return "EUR"

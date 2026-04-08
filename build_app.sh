@@ -21,6 +21,7 @@ pyinstaller \
   --windowed \
   --name "报关资料生成器" \
   --add-data "templates:templates" \
+  --add-data "export_templates:export_templates" \
   --add-data "data:data" \
   gui_app.py
 

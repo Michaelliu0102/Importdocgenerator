@@ -33,6 +33,20 @@ customs_doc_generator/
 pip install -r requirements.txt
 ```
 
+## Invoice 可编辑 PDF 模板（macOS 预览可修改）
+
+为了以后在 macOS `预览`里直接点进去修改（不再每次解析 PDF），项目内已新增一个生成脚本，可生成带表单字段的 `invoice_form_template.pdf`（AcroForm）。
+
+模板位置：
+- `templates/invoice_form_template.pdf`（最多支持 10 行明细）
+
+如果你想重新生成模板：
+```bash
+cd /Users/michael/customs_doc_generator
+.venv/bin/python scripts/generate_invoice_form_template_pdf.py --output templates/invoice_form_template.pdf --max-rows 10
+```
+
+
 ## 使用方法
 
 ### 交互模式

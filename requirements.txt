@@ -10,3 +10,7 @@ openpyxl>=3.1.0
 
 # Configuration
 pyyaml>=6.0
+
+# EUR invoice PDF (ReportLab fallback; overlay uses PyMuPDF)
+reportlab>=4.0.0
+pymupdf>=1.24.0

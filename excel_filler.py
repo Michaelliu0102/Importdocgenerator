@@ -3,8 +3,95 @@ Excel模板填充模块
 用于填充合同模板(CONTRACT_CAMARI_PRETTY.xlsx / CONTRACT.xlsx)和报关单模板(FedEx报关单模板.xlsx)
 """
 
-from typing import Dict, Any
+import re
+from typing import Any, Dict, Optional
+
 from openpyxl import load_workbook
+
+from packing_slip_parser import country_name_to_cn
+from pdf_parser import (
+    strip_camari_bill_to_name_suffix,
+    strip_ship_to_leaked_japan_from_camari_address,
+)
+
+
+# 含半角 ¥ (U+00A5) 与全角 ￥ (U+FFE5)，PDF 常混用
+_CURRENCY_OR_AMOUNT = re.compile(
+    r"[\u00a5\uffe5€]\s*[\d,]+(?:\.\d+)?|"
+    r"\$\s*[\d,]+(?:\.\d+)?|"
+    r"\b[\d,]+(?:\.\d+)?\s*(?:JPY|EUR|USD|CNY|GBP)\b",
+    re.IGNORECASE,
+)
+
+
+def _clean_address_line(line: str) -> str:
+    """去掉行尾/行内误提取的金额与币种，合并重复单词（如 Japan Japan）。"""
+    s = (line or "").strip()
+    if not s:
+        return ""
+    s = _CURRENCY_OR_AMOUNT.sub("", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    words = s.split()
+    out: list[str] = []
+    for w in words:
+        if out and out[-1].lower() == w.lower():
+            continue
+        out.append(w)
+    return " ".join(out)
+
+
+def _dedupe_side_by_side_text(s: str) -> str:
+    """PDF 双栏提取时常见「同一段文字并排重复」，去掉后半截重复。"""
+    s = (s or "").strip()
+    if not s:
+        return ""
+    parts = re.split(r"\s{2,}", s)
+    if len(parts) == 2 and parts[0].strip() == parts[1].strip():
+        return parts[0].strip()
+    words = s.split()
+    if len(words) >= 4 and len(words) % 2 == 0:
+        h = len(words) // 2
+        if words[:h] == words[h:]:
+            return " ".join(words[:h])
+    m = re.match(r"^(.+?)\s+(\1)$", s)
+    if m:
+        return m.group(1).strip()
+    mid = len(s) // 2
+    if mid > 5 and s[:mid].strip() == s[mid:].strip():
+        return s[:mid].strip()
+    return s
+
+
+def _dedupe_party_field(s: str) -> str:
+    if not (s or "").strip():
+        return ""
+    lines = []
+    for line in (s or "").split("\n"):
+        ln = line.strip()
+        if not ln:
+            continue
+        ln = _clean_address_line(ln)
+        if not ln:
+            continue
+        lines.append(_dedupe_side_by_side_text(ln))
+    return "\n".join(lines)
+
+
+def _effective_invoice_no(party: Dict[str, Any]) -> str:
+    """合同号 / 发票号：仅使用发票解析的 invoice_no（不用装箱单号）。"""
+    return (party.get("invoice_no") or "").strip()
+
+
+def _buyer_country_last_line(invoice_data: Dict[str, Any]) -> str:
+    """Bill To 地址中用于贸易国的行：自末行向上取首条非空清洗后的文本（通常为英文国家名）。"""
+    ba = (invoice_data.get("buyer_address") or "").strip()
+    if not ba:
+        return ""
+    for line in reversed([ln.strip() for ln in ba.split("\n") if ln.strip()]):
+        cleaned = _clean_address_line(line)
+        if cleaned:
+            return cleaned
+    return ""
 
 
 def _find_cell_contains(ws, text: str):
@@ -96,21 +183,46 @@ class ExcelFiller:
         invoice_no = invoice_data.get("invoice_no", "")
         invoice_date = invoice_data.get("invoice_date", "")
         payment = invoice_data.get("payment_cond") or supplier_info.get("payment_term", "")
+        is_camari_cust = invoice_data.get("format") == "camari_cust"
 
-        # Header block
-        ws.cell(row=4, column=3).value = "CAMARI TRADING (ZHEJIANG) CO., LTD"
+        # Header block：CustInvc 内销发票 = 卖方嘉兴 + Bill To 买方（含国家）
+        if is_camari_cust and invoice_data.get("buyer_name"):
+            ws.cell(row=4, column=3).value = (
+                invoice_data.get("issuer_name")
+                or "CAMARI TRADING (ZHEJIANG) CO., LTD"
+            )
+            ws.cell(row=5, column=3).value = invoice_data.get("issuer_address") or ""
+            ws.cell(row=7, column=3).value = strip_camari_bill_to_name_suffix(
+                invoice_data.get("buyer_name") or ""
+            )
+            ws.cell(row=8, column=3).value = (
+                strip_ship_to_leaked_japan_from_camari_address(
+                    _dedupe_party_field(
+                        (invoice_data.get("buyer_address") or "").strip()
+                    )
+                )
+            )
+        else:
+            ws.cell(row=4, column=3).value = "CAMARI TRADING (ZHEJIANG) CO., LTD"
+            ws.cell(row=7, column=3).value = supplier_name
+            ws.cell(row=8, column=3).value = supplier_addr
         ws.cell(row=4, column=10).value = invoice_no
         ws.cell(row=5, column=10).value = invoice_date
-        ws.cell(row=7, column=3).value = supplier_name
-        ws.cell(row=8, column=3).value = supplier_addr
         # 第10行已改为只保留 Incoterms / Payment Terms（无 Country / Currency）
         ws.cell(row=10, column=3).value = trade_term
         ws.cell(row=10, column=7).value = payment
 
-        # Item table rows: 13-24
+        # Item table rows: 13-24（No. = 发票 # 栏行号；品名 = Item 描述）
         for i, item in enumerate(items[:12], 1):
             r = 12 + i
-            ws.cell(row=r, column=2).value = i
+            row_no = item.get("line_no")
+            if row_no is not None and str(row_no).strip() != "":
+                try:
+                    ws.cell(row=r, column=2).value = int(str(row_no).strip())
+                except (TypeError, ValueError):
+                    ws.cell(row=r, column=2).value = row_no
+            else:
+                ws.cell(row=r, column=2).value = i
             ws.cell(row=r, column=3).value = item.get("description", "")
 
             qty_val = item.get("quantity", "")
@@ -326,6 +438,229 @@ class ExcelFiller:
 
                 ws2.cell(row=r, column=8).value = trade_term
                 ws2.cell(row=r, column=9).value = supplier_country
+
+        wb.save(output_path)
+        return output_path
+
+    def fill_export_contract_template(
+        self,
+        invoice_data: Dict[str, Any],
+        supplier_info: Dict[str, Any],
+        product_info: Dict[str, Any],
+        output_path: str,
+        *,
+        party_invoice_data: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """填充 export_templates/export_contract.xlsx（出口合同，版式与进口 CONTRACT 不同）。
+
+        party_invoice_data: 若提供，买方/卖方抬头与合同号取自**原票**解析结果（与 EUR 换算后的
+        invoice_data 分离）；行项目金额仍以 invoice_data 为准。合同号仅使用 invoice_no。
+        """
+        wb = load_workbook(self.template_path)
+        ws = wb.active
+
+        p = party_invoice_data if party_invoice_data is not None else invoice_data
+        items = invoice_data.get("items", [])
+        buyer = strip_camari_bill_to_name_suffix(
+            _dedupe_party_field((p.get("buyer_name") or "").strip())
+        )
+        buyer_addr = strip_ship_to_leaked_japan_from_camari_address(
+            _dedupe_party_field((p.get("buyer_address") or "").strip())
+        )
+        issuer_name = _dedupe_party_field((p.get("issuer_name") or "").strip())
+        issuer_addr = _dedupe_party_field((p.get("issuer_address") or "").strip())
+        invoice_no = _effective_invoice_no(p)
+        invoice_date = (p.get("invoice_date") or "").strip()
+        trade_term = invoice_data.get("trade_term") or (
+            supplier_info or {}
+        ).get("trade_term", "")
+        payment = invoice_data.get("payment_cond") or (
+            supplier_info or {}
+        ).get("payment_term", "")
+        currency = invoice_data.get("currency", "EUR") or "EUR"
+
+        ws["C4"] = buyer
+        ws["C5"] = buyer_addr
+        ws["J4"] = invoice_no
+        ws["J5"] = invoice_date
+        ws["C10"] = trade_term
+        ws["G10"] = payment
+        # 卖方（原发票 issuer；若模板 C2/C3 为占位或空则写入）
+        if issuer_name or issuer_addr:
+            for r, val in ((2, issuer_name), (3, issuer_addr)):
+                if not val:
+                    continue
+                cur = ws.cell(row=r, column=3).value
+                if cur is None or str(cur).strip() == "":
+                    ws.cell(row=r, column=3).value = val
+            lab = _find_cell_contains(ws, "卖方")
+            if lab and issuer_name and "买方" not in str(lab.value or ""):
+                ws.cell(row=lab.row, column=lab.column + 1).value = issuer_name
+            lab_addr = _find_cell_contains(ws, "卖方地址")
+            if lab_addr and issuer_addr:
+                ws.cell(row=lab_addr.row, column=lab_addr.column + 1).value = issuer_addr
+
+        for i, item in enumerate(items[:12], 1):
+            r = 12 + i
+            row_no = item.get("line_no")
+            if row_no is not None and str(row_no).strip() != "":
+                try:
+                    ws.cell(row=r, column=2).value = int(str(row_no).strip())
+                except (TypeError, ValueError):
+                    ws.cell(row=r, column=2).value = row_no
+            else:
+                ws.cell(row=r, column=2).value = i
+            ws.cell(row=r, column=3).value = item.get("description", "")
+
+            qty_val = item.get("quantity", "")
+            try:
+                qty_val = float(qty_val)
+            except (TypeError, ValueError):
+                pass
+            ws.cell(row=r, column=7).value = qty_val
+            ws.cell(row=r, column=8).value = _unit_to_english(item.get("unit", "M"))
+
+            up_val = item.get("unit_price", "")
+            try:
+                up_val = float(up_val)
+            except (TypeError, ValueError):
+                pass
+            ws.cell(row=r, column=9).value = up_val
+            ws.cell(row=r, column=10).value = currency
+
+            amt_val = item.get("amount", "")
+            try:
+                amt_val = float(amt_val)
+            except (TypeError, ValueError):
+                pass
+            ws.cell(row=r, column=11).value = amt_val
+
+        total = invoice_data.get("total_amount", "")
+        try:
+            total = float(total)
+        except (TypeError, ValueError):
+            pass
+        ws["K25"] = total
+
+        wb.save(output_path)
+        return output_path
+
+    def fill_export_declaration_template(
+        self,
+        invoice_data: Dict[str, Any],
+        supplier_info: Dict[str, Any],
+        product_info: Dict[str, Any],
+        output_path: str,
+        line_groups: list,
+        product_info_map: Dict[str, Dict] = None,
+        packing_slip_data: Optional[Dict[str, Any]] = None,
+        *,
+        party_invoice_data: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """填充 export_templates/export_declaration.xlsx（海关出口报关单样式）。
+
+        party_invoice_data: 若提供，境外收货人抬头与合同号取自**原票**解析结果；金额行仍以
+        invoice_data / line_groups（可为 EUR 换算后）为准。
+        """
+        wb = load_workbook(self.template_path)
+        ws = wb.active
+
+        if product_info_map is None:
+            product_info_map = {}
+
+        p = party_invoice_data if party_invoice_data is not None else invoice_data
+        buyer = strip_camari_bill_to_name_suffix(
+            _dedupe_party_field((p.get("buyer_name") or "").strip())
+        )
+        buyer_addr = strip_ship_to_leaked_japan_from_camari_address(
+            _dedupe_party_field((p.get("buyer_address") or "").strip())
+        )
+        block = "境外收货人\n"
+        if buyer:
+            block += buyer
+        if buyer_addr:
+            block += "\n" + buyer_addr
+        ws["A3"] = block
+
+        inv_no = _effective_invoice_no(p)
+        trade_term = (
+            invoice_data.get("trade_term")
+            or (supplier_info or {}).get("trade_term", "")
+            or ""
+        ).strip()
+        bill_country_cn = country_name_to_cn(_buyer_country_last_line(p))
+        dest_cn = ""
+        if packing_slip_data:
+            dest_cn = (
+                packing_slip_data.get("ship_to_country_cn")
+                or country_name_to_cn(packing_slip_data.get("ship_to_country") or "")
+            )
+
+        if inv_no:
+            ws["A5"] = f"合同号\n{inv_no}"
+        if bill_country_cn:
+            ws["C5"] = f"贸易国（地区）\n{bill_country_cn}"
+        if dest_cn:
+            ws["E5"] = f"运抵国（地区）\n{dest_cn}"
+
+        if packing_slip_data:
+            pkg = packing_slip_data.get("pkg_qty")
+            gw = packing_slip_data.get("gross_weight_kg")
+            nw = packing_slip_data.get("net_weight_kg")
+            if pkg is not None and str(pkg).strip() != "":
+                ws["C6"] = f"件数\n{pkg}"
+            if gw is not None and str(gw).strip() != "":
+                ws["D6"] = f"毛重（千克）\n{gw}"
+            if nw is not None and str(nw).strip() != "":
+                ws["E6"] = f"净重(千克)\n{nw}"
+        if trade_term:
+            ws["F6"] = f"成交方式\n{trade_term}"
+
+        currency = invoice_data.get("currency", "") or "EUR"
+
+        for idx, grp in enumerate(line_groups[:6]):
+            r = 10 + idx
+            if r >= 16:
+                break
+            hs = grp.get("hs_code", "")
+            pname = grp.get("product_name", "")
+            gitems = grp.get("items") or []
+            desc_parts = []
+            total_qty = 0.0
+            total_amt = 0.0
+            unit = ""
+            for it in gitems:
+                d = (it.get("description") or "").strip()
+                if d:
+                    desc_parts.append(d)
+                unit = it.get("unit") or unit
+                try:
+                    total_qty += float(it.get("quantity", 0))
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    total_amt += float(it.get("amount", 0))
+                except (TypeError, ValueError):
+                    pass
+            desc = pname or "; ".join(desc_parts[:3])
+            if len(desc_parts) > 3:
+                desc += "…"
+            u_en = _unit_to_english(unit or (gitems[0].get("unit") if gitems else "M") or "M")
+            qty_unit = f"{total_qty:g} {u_en}" if gitems else ""
+
+            price_line = ""
+            if gitems:
+                try:
+                    up = float(gitems[0].get("unit_price", 0))
+                except (TypeError, ValueError):
+                    up = gitems[0].get("unit_price", "")
+                price_line = f"{up} {currency} / {total_amt} {currency}"
+
+            ws.cell(row=r, column=1).value = idx + 1
+            ws.cell(row=r, column=2).value = hs
+            ws.cell(row=r, column=3).value = desc
+            ws.cell(row=r, column=4).value = qty_unit
+            ws.cell(row=r, column=5).value = price_line
 
         wb.save(output_path)
         return output_path

@@ -1,10 +1,20 @@
 """
-Word文档生成模块
-生成申报要素文档 (不是替换占位符，而是根据产品信息生成内容)
+Word文档生成模块 — 申报要素
+
+- 进口流程 `generate()`：从空白文档生成标题与正文，不读取 templates/ 下的申报要素模板文件。
+- 出口流程 `generate_from_export_template()`：以 `export_templates/申报要素总汇.docx`（可在 YAML
+  `export_declaration_element_templates` 中配置）为壳，保留首段样式后填入正文。
 """
 
-from typing import Dict, Any, List
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+
 from docx import Document
+
+from item_declaration_mapper import (
+    build_declaration_groups,
+    use_item_mapping_enabled,
+)
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
@@ -39,6 +49,12 @@ def _calc_gram_weight(net_weight, quantity):
 class DeclarationElementsGenerator:
     """申报要素文档生成器"""
 
+    def __init__(self, config_path: Optional[str] = None):
+        base = Path(__file__).resolve().parent
+        self.config_path = config_path or str(
+            base / "data" / "supplier_product_mapping.yaml"
+        )
+
     def generate(
         self,
         invoice_data: Dict[str, Any],
@@ -48,26 +64,83 @@ class DeclarationElementsGenerator:
         product_info_map: Dict[str, Dict] = None,
     ):
         """
-        根据产品信息生成申报要素文档
+        进口用：新建 Word，不使用 export_templates/申报要素总汇.docx。
 
         product_info_map: optional {hide_type: product_info} for per-item HS/elements.
         """
         doc = Document()
 
-        items = invoice_data.get("items", [])
+        title = doc.add_heading("申报要素", level=1)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        self._append_declaration_elements_body(
+            doc,
+            invoice_data,
+            product_info,
+            supplier_info,
+            product_info_map or {},
+        )
+
+        doc.save(output_path)
+        return output_path
+
+    def generate_from_export_template(
+        self,
+        template_path: str,
+        invoice_data: Dict[str, Any],
+        product_info: Dict[str, Any],
+        supplier_info: Dict[str, Any],
+        output_path: str,
+        product_info_map: Dict[str, Dict] = None,
+    ) -> str:
+        """基于 export_templates/申报要素总汇.docx：保留首段标题与样式，替换正文为自动生成的申报要素。"""
+        doc = Document(template_path)
+        for p in list(doc.paragraphs)[1:]:
+            el = p._element
+            parent = el.getparent()
+            if parent is not None:
+                parent.remove(el)
+
+        self._append_declaration_elements_body(
+            doc,
+            invoice_data,
+            product_info,
+            supplier_info,
+            product_info_map or {},
+        )
+
+        doc.save(output_path)
+        return output_path
+
+    def _append_declaration_elements_body(
+        self,
+        doc: Document,
+        invoice_data: Dict[str, Any],
+        product_info: Dict[str, Any],
+        supplier_info: Dict[str, Any],
+        product_info_map: Dict[str, Dict],
+    ):
+        items = invoice_data.get("customs_items") or invoice_data.get("items", [])
         currency = invoice_data.get("currency", "EUR")
         invoice_no = invoice_data.get("invoice_no", "")
         net_weight = invoice_data.get("net_weight", "")
-
-        title = doc.add_heading("申报要素", level=1)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         doc.add_paragraph(f"发票号: {invoice_no}")
         doc.add_paragraph(f"供应商: {supplier_info.get('name', '')}")
         doc.add_paragraph("")
 
-        item_groups = self._group_items_by_product(
-            items, product_info, product_info_map or {})
+        if use_item_mapping_enabled(invoice_data):
+            item_groups = build_declaration_groups(
+                items,
+                invoice_data,
+                product_info,
+                product_info_map or {},
+                self.config_path,
+            )
+        else:
+            item_groups = self._group_items_by_product(
+                items, product_info, product_info_map or {}
+            )
 
         for group_idx, group in enumerate(item_groups, 1):
             group_hs = group["hs_code"]
@@ -122,9 +195,6 @@ class DeclarationElementsGenerator:
                 doc.add_paragraph(line)
 
             doc.add_paragraph("")
-
-        doc.save(output_path)
-        return output_path
 
     def _group_items_by_product(
         self,

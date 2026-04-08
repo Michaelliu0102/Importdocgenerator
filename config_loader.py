@@ -47,6 +47,14 @@ class ConfigLoader:
         }
         return templates.get(template_type, "")
 
+    def get_export_declaration_template_filename(self) -> str:
+        """
+        出口申报要素 Word 壳文件名（位于 export_templates/，与进口 templates/ 下的申报要素模板不同）。
+        """
+        return self.config.get("export_declaration_element_templates", {}).get(
+            "default", "申报要素总汇.docx"
+        )
+
     def match_supplier_by_name(self, supplier_name: str) -> Optional[tuple]:
         """
         根据供应商名称匹配供应商代码
