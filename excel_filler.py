@@ -7,7 +7,16 @@ import re
 from typing import Any, Dict, Optional
 
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Font
 
+from config_loader import ConfigLoader
+from item_declaration_mapper import (
+    DEFAULT_IMPORT_EXCEL,
+    load_excel_mapping_rows,
+    load_import_rules_for_config,
+    resolve_item_declaration,
+    use_item_mapping_enabled,
+)
 from packing_slip_parser import country_name_to_cn
 from pdf_parser import (
     strip_camari_bill_to_name_suffix,
@@ -62,6 +71,50 @@ def _dedupe_side_by_side_text(s: str) -> str:
     return s
 
 
+def _append_fedex_import_print_summary(wb) -> None:
+    """在进口 FedEx 报关单工作簿中插入「打印汇总」工作表（置于首位），纵向拼接
+    1.企业信息、2.商品信息、以及模板中若存在的「确认申报」表，便于只选该表一次打印。"""
+    required = ("1.企业信息", "2.商品信息")
+    if not all(name in wb.sheetnames for name in required):
+        return
+
+    SUMMARY = "打印汇总"
+    third_candidates = ("3.确认申报", "确认申报", "3.确认")
+
+    if SUMMARY in wb.sheetnames:
+        wb.remove(wb[SUMMARY])
+    ws_out = wb.create_sheet(SUMMARY, 0)
+
+    row = 1
+    hint = ws_out.cell(row=row, column=1)
+    hint.value = "以下为「企业信息 + 商品信息 + 确认申报」汇总，便于一次打印；详细版式仍以各分表为准。"
+    hint.font = Font(italic=True, size=9)
+    row += 2
+
+    def append_block(title: str, src) -> None:
+        nonlocal row
+        t = ws_out.cell(row=row, column=1)
+        t.value = title
+        t.font = Font(bold=True, size=11)
+        row += 1
+        mr = max(int(src.max_row or 0), 1)
+        mc = max(int(src.max_column or 0), 1)
+        for src_r in range(1, mr + 1):
+            for c in range(1, mc + 1):
+                ws_out.cell(row=row, column=c).value = src.cell(
+                    row=src_r, column=c
+                ).value
+            row += 1
+        row += 1
+
+    append_block("一、企业信息", wb["1.企业信息"])
+    append_block("二、商品信息", wb["2.商品信息"])
+    for name in third_candidates:
+        if name in wb.sheetnames:
+            append_block("三、确认申报", wb[name])
+            break
+
+
 def _dedupe_party_field(s: str) -> str:
     if not (s or "").strip():
         return ""
@@ -108,6 +161,7 @@ def _unit_to_english(unit: str) -> str:
     mapping = {
         "米": "M",
         "张": "PCS",
+        "平方米": "SQM",
         "平方英尺": "SQFT",
         "千克": "KG",
     }
@@ -347,6 +401,7 @@ class ExcelFiller:
         product_info: Dict[str, Any],
         output_path: str,
         product_info_map: Dict[str, Dict] = None,
+        config_path: str = None,
     ):
         """
         填充FedEx报关单模板 (FedEx报关单模板.xlsx)
@@ -363,6 +418,14 @@ class ExcelFiller:
 
         if not product_info_map:
             product_info_map = {}
+
+        mapping_loader = None
+        import_rules = []
+        internal_item_rows = []
+        if config_path and use_item_mapping_enabled(invoice_data):
+            mapping_loader = ConfigLoader(config_path)
+            import_rules = load_import_rules_for_config(config_path, invoice_data)
+            internal_item_rows = load_excel_mapping_rows(DEFAULT_IMPORT_EXCEL)
 
         # === Sheet 1: 企业信息 ===
         if "1.企业信息" in wb.sheetnames:
@@ -385,12 +448,27 @@ class ExcelFiller:
                 r = 2 + i
                 qty = item.get("quantity", "")
 
-                # Pick product_info for this item: by hide_type, then default
-                hide_type = item.get("hide_type", "")
-                cur_pi = product_info_map.get(hide_type) or product_info or {}
-                hs_code = cur_pi.get("hs_code", "")
-                product_name_cn = cur_pi.get("name", "")
-                decl_elements = cur_pi.get("declaration_elements", {})
+                if mapping_loader is not None:
+                    resolved = resolve_item_declaration(
+                        item,
+                        [],
+                        mapping_loader,
+                        product_info or {},
+                        product_info_map or {},
+                        import_rules=import_rules,
+                        invoice_data=invoice_data,
+                        internal_item_rows=internal_item_rows,
+                    )
+                    hs_code = resolved.get("hs_code", "")
+                    product_name_cn = resolved.get("product_name", "")
+                    decl_elements = resolved.get("declaration_elements", {})
+                else:
+                    # Pick product_info for this item: by hide_type, then default
+                    hide_type = item.get("hide_type", "")
+                    cur_pi = product_info_map.get(hide_type) or product_info or {}
+                    hs_code = cur_pi.get("hs_code", "")
+                    product_name_cn = cur_pi.get("name", "")
+                    decl_elements = cur_pi.get("declaration_elements", {})
 
                 gram_weight = _calc_gram_weight(net_weight, qty)
 
@@ -422,7 +500,15 @@ class ExcelFiller:
 
                 ws2.cell(row=r, column=1).value = cn_name
                 ws2.cell(row=r, column=2).value = item_hs
-                ws2.cell(row=r, column=3).value = decl_text
+                c3 = ws2.cell(row=r, column=3)
+                c3.value = decl_text
+                # C 列申报要素：自动换行（依列宽折行）；顶对齐便于多行阅读
+                c3.alignment = Alignment(wrap_text=True, vertical="top")
+                if decl_text:
+                    # openpyxl 不会按内容重算行高，粗算行数避免打开前被裁切（Excel 仍可再调）
+                    est_lines = max(1, len(decl_text) // 42 + decl_text.count(";") // 2 + 1)
+                    ws2.row_dimensions[r].height = min(409, 14 * est_lines)
+
                 ws2.cell(row=r, column=4).value = per_item_weight
 
                 unit = item.get("unit", "米")
@@ -438,6 +524,8 @@ class ExcelFiller:
 
                 ws2.cell(row=r, column=8).value = trade_term
                 ws2.cell(row=r, column=9).value = supplier_country
+
+        _append_fedex_import_print_summary(wb)
 
         wb.save(output_path)
         return output_path
@@ -650,10 +738,18 @@ class ExcelFiller:
 
             price_line = ""
             if gitems:
-                try:
-                    up = float(gitems[0].get("unit_price", 0))
-                except (TypeError, ValueError):
-                    up = gitems[0].get("unit_price", "")
+                if total_qty > 0 and total_amt > 0:
+                    try:
+                        up = round(total_amt / total_qty, 4)
+                    except (TypeError, ZeroDivisionError):
+                        up = None
+                else:
+                    up = None
+                if up is None:
+                    try:
+                        up = float(gitems[0].get("unit_price", 0))
+                    except (TypeError, ValueError):
+                        up = gitems[0].get("unit_price", "")
                 price_line = f"{up} {currency} / {total_amt} {currency}"
 
             ws.cell(row=r, column=1).value = idx + 1

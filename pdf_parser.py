@@ -1,7 +1,7 @@
 """
 PDF Invoice 解析模块
 从进口Invoice PDF中提取关键信息
-支持供应商: Alcantara, DECA GLOBAL, Crest, HDM, Mabo, West Trading, Wipelli, Continental, Mastrotto
+支持供应商: Alcantara, DECA GLOBAL, CAMARI INTERNATIONAL JAPAN, Crest, HDM, Mabo, West Trading, Wipelli, Continental, Mastrotto
 """
 
 import re
@@ -17,9 +17,35 @@ def _parse_euro_amount(s: str) -> str:
 
 
 def _parse_camari_cust_number(s: str) -> str:
-    """CustInvc-style amounts: US thousands comma, optional ¥ / € / ĉ / NBSP prefix (e.g. ĉ61,200)."""
+    """CustInvc 金额：支持欧式小数逗号、千分位空格（如 €1 800,00、1.800,00）及日元式整数逗号。"""
     s = (s or "").replace("¥", "").replace("€", "").replace("ĉ", "").replace("\u00a0", " ").strip()
+    s = re.sub(r"\s+", "", s)
+    if not s:
+        return ""
+    # 欧式 ,dd 结尾 → 小数点
+    if re.search(r",\d{2}$", s):
+        if "." in s:
+            return _parse_euro_amount(s)
+        return s.replace(",", ".")
+    # 无小数逗号时，逗号视为千分位
     return s.replace(",", "").strip()
+
+
+def _camari_cust_leading_product_title(desc: str) -> str:
+    """出口合并用：取英文品名主名（遇数字前截断，避免 9002 Black 与颜色拆成多行）。"""
+    s = (desc or "").strip()
+    if not s:
+        return ""
+    parts = re.split(r"\d", s, 1)
+    return parts[0].strip()
+
+
+def _camari_invoice_no_after_hash(raw: str) -> str:
+    """CustInvc：发票号固定为「#」之后数字的前 5 位；不足 5 位则保留全部。"""
+    d = re.sub(r"\D", "", str(raw or ""))
+    if len(d) >= 5:
+        return d[:5]
+    return d
 
 
 def strip_camari_bill_to_name_suffix(name: str) -> str:
@@ -101,10 +127,10 @@ class InvoiceParser:
             return "crest"
         if "higher dimension" in t:
             return "hdm"
-        if "mabo" in t:
-            return "mabo"
         if "westtrading" in t or "west trading" in t:
             return "west_trading"
+        if re.search(r"\bmabo\b", t):
+            return "mabo"
         if "wipelli" in t:
             return "wipelli"
         if "hornschuch" in t or "continental" in t:
@@ -119,12 +145,16 @@ class InvoiceParser:
             and "ship to" in t
             and re.search(r"#\s*item", t, re.IGNORECASE)
         )
+        # CustInvc 的 Bill To 常含 "CAMARI INTERNATIONAL JAPAN"；
+        # 先识别内部 CustInvc，避免被误判成 camari_japan。
         if camari_table and (
             "camari trading (zhejiang)" in t
             or ("camari" in t and "zhejiang" in t)
             or custinv_filename
         ):
             return "camari_cust"
+        if "camari international japan" in t:
+            return "camari_japan"
         return "generic"
 
     def parse(self) -> Dict[str, Any]:
@@ -134,7 +164,7 @@ class InvoiceParser:
         self._fmt = self._detect_format()
         items = self._extract_items()
 
-        customs_items = self._aggregate_customs_items(items)
+        customs_items = self._aggregate_customs_items(items, self._fmt)
 
         issuer_name, issuer_address = self._extract_issuer_for_contract()
 
@@ -168,15 +198,19 @@ class InvoiceParser:
         fmt = self._fmt
 
         if fmt == "alcantara":
+            # 常见版式：「INVOICE: 2026002919 OF: 16/03/26」（号码在标签后）
+            m = re.search(r"INVOICE:\s*(\d{8,12})\b", self.raw_text, re.IGNORECASE)
+            if m:
+                return m.group(1)
+            # 旧版式：「2026002919INVOICE:」或 FATTURA 粘连
             m = re.search(r"(\d{10})INVOICE:", self.raw_text)
             if m:
                 return m.group(1)
-            # pypdf concatenated: "FATTURA: dd/mm/yyDEL:2025010310"
             m = re.search(r"DEL:(\d{10})", self.raw_text)
             if m:
                 return m.group(1)
 
-        if fmt == "deca":
+        if fmt in {"deca", "camari_japan"}:
             m = re.search(r"Invoice\s*\n#(\d+)", self.raw_text)
             if m:
                 return m.group(1)
@@ -200,7 +234,11 @@ class InvoiceParser:
                 return m.group(1)
 
         if fmt == "west_trading":
-            m = re.search(r"Invoice-number\s*\n?\s*(\d+)", self.raw_text, re.IGNORECASE)
+            m = re.search(
+                r"Invoice-number\s*:?\s*\n?\s*(\d+)",
+                self.raw_text,
+                re.IGNORECASE,
+            )
             if m:
                 return m.group(1)
 
@@ -228,9 +266,30 @@ class InvoiceParser:
                 return m.group(1)
 
         if fmt == "camari_cust":
-            m = re.search(r"Invoice\s*#\s*(\d{4,8})\b", self.raw_text, re.IGNORECASE)
+            # 1) INVOICE 标题下一行仅为「# + 号码」（常见版式：Invoice / #32934）
+            m = re.search(
+                r"Invoice\s*\n\s*#\s*(\d+)\b",
+                self.raw_text,
+                re.IGNORECASE,
+            )
             if m:
-                return m.group(1)
+                return _camari_invoice_no_after_hash(m.group(1))
+            # 2) 标题下一整行里第一个「#」后的数字（如抬头行 CAMARI … #329341525 Hexing Rd）
+            m = re.search(
+                r"\bInvoice\s*\r?\n([^\n]+)",
+                self.raw_text,
+                re.IGNORECASE,
+            )
+            if m:
+                m2 = re.search(r"#\s*(\d+)", m.group(1))
+                if m2:
+                    return _camari_invoice_no_after_hash(m2.group(1))
+            # 3) 同行「Invoice #12345」
+            m = re.search(r"Invoice\s*#\s*(\d{4,12})\b", self.raw_text, re.IGNORECASE)
+            if m:
+                return _camari_invoice_no_after_hash(m.group(1))
+            # 仅此三种为发票号来源（# 后数字再截 5 位）；SO、其它编号均不作为发票号
+            return None
 
         # Generic fallbacks
         patterns = [
@@ -329,6 +388,7 @@ class InvoiceParser:
         text = self.raw_text.lower()
         known = [
             ("alcantara", "s.p.a", "Alcantara S.p.A."),
+            ("camari international japan", None, "CAMARI INTERNATIONAL JAPAN"),
             ("deca global", None, "DECA GLOBAL S.R.L."),
             ("crest", "leather", "Crest JMT Leather Ltd."),
             ("wipelli", None, "WIPELLI INTERNATIONAL SRL"),
@@ -518,6 +578,11 @@ class InvoiceParser:
             if items:
                 return items
 
+        if fmt == "camari_japan":
+            items = self._parse_deca_items()
+            if items:
+                return items
+
         if fmt == "crest":
             return self._parse_crest_items()
 
@@ -542,12 +607,13 @@ class InvoiceParser:
         return []
 
     @staticmethod
-    def _aggregate_customs_items(items: list) -> list:
+    def _aggregate_customs_items(items: list, fmt: Optional[str] = None) -> list:
         """Aggregate line items for customs declaration.
 
         Grouping key (in priority order):
-        - Wipelli: article_name  (NAPPA SOFT, ADRIA, …)
+        - Wipelli: hide_type / HS bucket (HIDES vs HALF HIDES)
         - Alcantara / DECA: item_code_prefix  (first 4 digits of item code)
+        - camari_cust 且无料号: 按英文品名主名合并（如多条 Pouch → 一条）
         - Others: no aggregation (each item kept as-is)
 
         Aggregated row: quantity = sum, amount = sum,
@@ -556,10 +622,113 @@ class InvoiceParser:
         if not items:
             return items
 
+        if fmt == "wipelli":
+            from collections import OrderedDict
+
+            groups: OrderedDict = OrderedDict()
+            for item in items:
+                hide_type = item.get("hide_type", "") or "HIDES"
+                key = f"hide:{hide_type}"
+                if key not in groups:
+                    groups[key] = {
+                        "hide_type": hide_type,
+                        "unit": "张",
+                        "first_desc": item.get("description", ""),
+                        "total_qty": 0.0,
+                        "total_amount": 0.0,
+                        "total_area": 0.0,
+                    }
+                g = groups[key]
+                try:
+                    g["total_qty"] += float(item.get("hide_count") or item.get("quantity") or 0)
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    g["total_amount"] += float(item.get("amount", 0))
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    g["total_area"] += float(item.get("area_sqm", 0))
+                except (ValueError, TypeError):
+                    pass
+
+            result = []
+            for grp in groups.values():
+                qty = round(grp["total_qty"], 2)
+                amt = round(grp["total_amount"], 2)
+                area = round(grp["total_area"], 2)
+                up = round(amt / qty, 2) if qty > 0 else 0
+                hide_label = grp["hide_type"]
+                result.append(
+                    {
+                        "description": f"LEATHER ART. {hide_label}",
+                        "hide_type": hide_label,
+                        "hide_count": str(qty).rstrip("0").rstrip("."),
+                        "quantity": str(qty).rstrip("0").rstrip("."),
+                        "unit": grp["unit"],
+                        "unit_price": str(up),
+                        "amount": str(amt),
+                        "area_sqm": str(area),
+                    }
+                )
+            return result
+
         has_group_key = any(
             item.get("article_name") or item.get("item_code_prefix")
             for item in items
         )
+        if not has_group_key and fmt == "camari_cust":
+            from collections import OrderedDict
+            groups: OrderedDict = OrderedDict()
+            solo_idx = 0
+            for item in items:
+                title = _camari_cust_leading_product_title(item.get("description", ""))
+                if title:
+                    key = f"title:{title.lower()}"
+                else:
+                    key = f"solo:{solo_idx}"
+                    solo_idx += 1
+                if key not in groups:
+                    groups[key] = {
+                        "article_name": "",
+                        "item_code_prefix": "",
+                        "unit": item.get("unit", ""),
+                        "hide_type": item.get("hide_type", ""),
+                        "country_code": item.get("country_code", ""),
+                        "first_desc": item.get("description", ""),
+                        "total_qty": 0.0,
+                        "total_amount": 0.0,
+                    }
+                g = groups[key]
+                try:
+                    g["total_qty"] += float(item.get("quantity", 0))
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    g["total_amount"] += float(item.get("amount", 0))
+                except (ValueError, TypeError):
+                    pass
+            result = []
+            for key, grp in groups.items():
+                qty = round(grp["total_qty"], 2)
+                amt = round(grp["total_amount"], 2)
+                up = round(amt / qty, 2) if qty > 0 else 0
+                agg: dict = {
+                    "description": grp["first_desc"],
+                    "quantity": str(qty),
+                    "unit": grp["unit"],
+                    "unit_price": str(up),
+                    "amount": str(amt),
+                }
+                if grp["item_code_prefix"]:
+                    agg["item_code_prefix"] = grp["item_code_prefix"]
+                if grp["hide_type"]:
+                    agg["hide_type"] = grp["hide_type"]
+                if grp["country_code"]:
+                    agg["country_code"] = grp["country_code"]
+                result.append(agg)
+            return result
+
         if not has_group_key:
             return items
 
@@ -626,9 +795,22 @@ class InvoiceParser:
         return result
 
     def _parse_alcantara_items(self) -> list:
-        alcantara_pattern = (
-            r"^(\d{8,10}[A-Z]{0,3})\s+"  # item_code (8-10 digits + optional letters)
-            r"(.+?)\s{2,}"                # description
+        """Alcantara 明细行：同一供应商可能有两种 PDF 文本顺序。
+
+        表头为 ``Material | Description | Your Material | ...``。业务上的「品名/行项目」对应 **Material 栏**
+        （料号，如 ``50153335BP``），**Description 栏** 文字可选；解析结果里 ``description`` 仅填 Material，
+        Description 栏放入 ``description_supplement``（供关键词/申报匹配拼接使用）。
+
+        **Layout A（旧）**：品名后紧跟「数量、VAT 两位、金额、单价、单位、国家、TD、成分」——
+        常见于 pypdf 抽字或单列粘连排版。
+
+        **Layout B（新）**：PyMuPDF ``sort=True`` 时常为「料号+Description → 国家 IT → TD A2 → 成分 68 → 单位 M
+        → 数量 → 单价 → 金额 → VAT」——若只匹配 A 会得到 ``items=[]``。
+        """
+        # --- Layout A（旧）---
+        alcantara_pattern_a = (
+            r"^(\d{8,10}[A-Z]{0,3})\s+"  # Material 栏料号
+            r"(.+?)\s{2,}"                # PDF「Description」栏（可选，非 Material）
             r"(\d+,\d{2})\s+"             # quantity
             r"(\d{2})"                     # VAT code
             r"([\d.]+,\d{2})"             # amount
@@ -638,13 +820,16 @@ class InvoiceParser:
             r"([A-Z]\d)\s+"               # TD code
             r"(\d+)"                       # composition code
         )
-        matches = re.findall(alcantara_pattern, self.raw_text, re.MULTILINE)
+        matches = re.findall(alcantara_pattern_a, self.raw_text, re.MULTILINE)
         items = []
         for match in matches:
+            code = match[0].strip()
+            desc_col = match[1].strip()
             items.append({
-                "item_code": match[0],
-                "item_code_prefix": match[0][:4],
-                "description": match[1].strip(),
+                "item_code": code,
+                "item_code_prefix": code[:4],
+                "description": code,
+                "description_supplement": desc_col or None,
                 "quantity": match[2].replace(',', '.'),
                 "unit": "米" if match[6] == "M" else match[6],
                 "unit_price": match[5].replace(',', '.'),
@@ -652,6 +837,38 @@ class InvoiceParser:
                 "country_code": match[7],
                 "td_code": match[8],
                 "composition_code": match[9],
+            })
+        if items:
+            return items
+
+        # --- Layout B（PyMuPDF 阅读顺序）：国家/TD/成分/单位 在数量之前 ---
+        alcantara_pattern_b = (
+            r"^(\d{8,10}[A-Z]{0,3})\s+"
+            r"(.+?)\s{2,}"
+            r"([A-Z]{2})\s+"
+            r"([A-Z]\d)\s+"
+            r"(\d+)\s+"
+            r"([A-Z])\s+"
+            r"(\d+,\d{2})\s+"
+            r"(\d+,\d{2})\s+"
+            r"([\d.]+,\d{2})"
+            r"\s+(\d+)\s*$"
+        )
+        for match in re.findall(alcantara_pattern_b, self.raw_text, re.MULTILINE):
+            code = match[0].strip()
+            desc_col = match[1].strip()
+            items.append({
+                "item_code": code,
+                "item_code_prefix": code[:4],
+                "description": code,
+                "description_supplement": desc_col or None,
+                "quantity": match[6].replace(',', '.'),
+                "unit": "米" if match[5] == "M" else match[5],
+                "unit_price": match[7].replace(',', '.'),
+                "amount": match[8].replace('.', '').replace(',', '.'),
+                "country_code": match[2],
+                "td_code": match[3],
+                "composition_code": match[4],
             })
         return items
 
@@ -715,6 +932,7 @@ class InvoiceParser:
             self.raw_text.replace("ĉ", "¥")
             .replace("€", "¥")
             .replace("￥", "¥")
+            .replace("A$", "¥")
             .replace("\u00a0", " ")
         )
         # pypdf 常为「# Item Quantity …」一行；PyMuPDF sort 可能为「#   Item」与「Quantity」大间距，不能用 "# item quantity" 连续子串。
@@ -732,14 +950,14 @@ class InvoiceParser:
         lines = lines[1:]  # drop header row
 
         data_re = re.compile(
-            r"^([\d.]+)\s+([A-Za-z]+)\s+¥?\s*([\d,]+(?:\.\d+)?)\s+\d+%\s+¥?\s*([\d,]+(?:\.\d+)?)\s*$"
+            r"^([\d.]+)\s+([A-Za-z]+)\s+¥?\s*([\d\s.,]+)\s+\d+%\s+¥?\s*([\d\s.,]+)\s*$"
         )
-        _UNITS = r"M|PCS|SF|SQM|SET|PC|EA|KG|LM|YD|FT|ROLL|ROLLS|PAIR|PAIRS"
+        _UNITS = r"M|PCS|SF|SQM|SET|PC|EA|KG|LM|YD|FT|ROLL|ROLLS|PAIR|PAIRS|M2|MQ|平方米"
         suffix_re = re.compile(
-            r"([\d.]+)\s+(" + _UNITS + r")\s+¥?\s*([\d,]+(?:\.\d+)?)\s+\d+%\s+¥?\s*([\d,]+(?:\.\d+)?)\s*$",
+            r"([\d.]+)\s+(" + _UNITS + r")\s+¥?\s*([\d\s.,]+)\s+\d+%\s+¥?\s*([\d\s.,]+)\s*$",
             re.IGNORECASE,
         )
-        next_item_re = re.compile(r"^(\d{1,3})([A-Za-z])")  # detects start of next item line
+        next_item_re = re.compile(r"^(\d{1,3})\s*([A-Za-z])")  # detects start of next item line
         items: List[dict] = []
         i = 0
         while i < len(lines):
@@ -778,7 +996,7 @@ class InvoiceParser:
                 continue
 
             # --- Single line: 1MF 1387 1.2mm 10 M ¥1,440 0% ¥14,400 ---
-            m_one = re.match(r"^(\d+)(.+)$", ln)
+            m_one = re.match(r"^(\d+)\s*(.+)$", ln)
             if m_one:
                 rest = m_one.group(2).strip()
                 sm = suffix_re.search(rest)
@@ -801,8 +1019,8 @@ class InvoiceParser:
                     i += 1
                     continue
 
-            # --- Multi-line: 2Seat Cover / 4VERONA 5002 ---
-            m_head = re.match(r"^(\d+)([A-Za-z].*)$", ln)
+            # --- Multi-line: 2Seat Cover / 4VERONA 5002 / 1 NAPPA 5002 ---
+            m_head = re.match(r"^(\d+)\s*([A-Za-z].*)$", ln)
             if not m_head:
                 i += 1
                 continue
@@ -1016,23 +1234,37 @@ class InvoiceParser:
         'PORS18118 FLATWOVEN WITH SQUARES STUDIO CHECK'
         '62% wool / 38% pes'
         '10,00 80,00 800,00mtr.'
+        Newer text extraction may keep qty/price/amount on the item line:
+        'PORS18026 FLATWOVEN ... 10,00 mtr. 68,00 680,00'
         """
         items = []
         lines = self.raw_text.split("\n")
         for i, line in enumerate(lines):
-            m = re.match(r"^([A-Z]{2,}\d{3,})\s+(.+)$", line)
+            m = re.match(r"^\s*([A-Z]{2,}\d{3,})\s+(.+)$", line)
             if not m:
                 continue
             item_code = m.group(1)
-            desc = m.group(2).strip()
+            rest = m.group(2).strip()
+            desc = rest
+            qty = price = amount = ""
+
+            inline = re.match(
+                r"^(.*?)\s+([\d,.]+)\s*(?:mtr\.?|pcs)?\s+([\d,.]+)\s+([\d.,]+)\s*$",
+                rest,
+                re.IGNORECASE,
+            )
+            if inline:
+                desc = inline.group(1).strip()
+                qty = inline.group(2).replace(",", ".")
+                price = _parse_euro_amount(inline.group(3))
+                amount = _parse_euro_amount(inline.group(4))
 
             composition = ""
             if i + 1 < len(lines) and "%" in lines[i + 1]:
                 composition = lines[i + 1].strip()
 
             data_line_idx = i + 2 if composition else i + 1
-            qty = price = amount = ""
-            if data_line_idx < len(lines):
+            if not qty and data_line_idx < len(lines):
                 dm = re.match(r"^\s*([\d,]+)\s+([\d,]+)\s+([\d.,]+)\s*(?:mtr\.|pcs)?", lines[data_line_idx])
                 if dm:
                     qty = dm.group(1).replace(",", ".")
@@ -1053,107 +1285,51 @@ class InvoiceParser:
         return items
 
     def _parse_wipelli_items(self) -> list:
-        """Wipelli: LEATHER ART descriptions with (N HIDES), then data lines.
+        """Wipelli: description line has sqm/price/amount; next line has hide count.
 
-        pypdf may produce two formats:
-        A) Inline: "365,5Mq  29,5000  10.782,25" (qty+Mq glued, price, amount on one line)
-        B) Columnar: separate "Mq" lines followed by consecutive numbers.
-        We try inline first; fall back to columnar if no inline matches found.
+        Example:
+        LEATHER ART. NAPPA SOFT COL. 2588 LENEN  Mq 365,5 29,5000 10.782,25
+        (69 HIDES)
+
+        Contract/invoice should keep the invoice quantity in square meters (Mq) and
+        the invoice sqm unit price. Customs still relies on hide_count/hide_type,
+        which we preserve separately for later aggregation.
         """
-        desc_matches = re.findall(
-            r"(LEATHER\s+ART\.\s+[^\(]+?)\s*\((\d+)\s*(HIDES|HALF HIDES)\)",
-            self.raw_text,
+        pattern = re.compile(
+            r"^LEATHER\s+ART\.\s+(?P<body>.*?)\s+Mq\s+"
+            r"(?P<sqm>[\d.,]+)\s+"
+            r"(?P<sqm_price>[\d.,]+)\s+"
+            r"(?P<amount>[\d.]+,\d{2})\s*"
+            r"\n\s*\((?P<hide_count>\d+)\s+"
+            r"(?P<hide_type>HALF\s+HIDES|HIDES)\)",
+            re.IGNORECASE | re.MULTILINE,
         )
-        if not desc_matches:
-            return []
-
-        n = len(desc_matches)
-        lines = self.raw_text.split("\n")
-        stripped = [l.strip() for l in lines]
-
-        # --- Format A: inline "365,5Mq  29,5000  10.782,25" ---
-        inline_data: List[dict] = []
-        for line in stripped:
-            m = re.match(r"([\d.,]+)\s*Mq\s+([\d.,]+)\s+([\d.,]+)", line)
-            if m:
-                inline_data.append({
-                    "qty": m.group(1).replace(",", "."),
-                    "price": _parse_euro_amount(m.group(2)),
-                    "amount": _parse_euro_amount(m.group(3)),
-                })
-
-        if len(inline_data) == n:
-            items = []
-            for idx, (desc_raw, hide_count, hide_type) in enumerate(desc_matches):
-                art_m = re.search(r"ART\.\s+(.+?)\s+COL\.", desc_raw)
-                article_name = art_m.group(1).strip() if art_m else None
-
-                desc = f"{desc_raw.strip()} ({hide_count} {hide_type})"
-                d = inline_data[idx]
-
-                item = {
-                    "line_no": str(idx + 1),
-                    "description": desc,
-                    "hide_count": hide_count,
-                    "hide_type": hide_type,
-                    "quantity": d["qty"],
-                    "unit": "平方米",
-                    "unit_price": d["price"],
-                    "amount": d["amount"],
-                }
-                if article_name:
-                    item["article_name"] = article_name
-                items.append(item)
-            return items
-
-        # --- Format B: columnar (Mq on own line, numbers below) ---
-        mq_values: List[str] = []
-        prices: List[str] = []
-
-        mq_indices = [k for k, s in enumerate(stripped) if s == "Mq"]
-        if mq_indices:
-            last_mq = mq_indices[-1]
-            j = last_mq + 1
-            all_nums: List[str] = []
-            while j < len(stripped):
-                s = stripped[j]
-                if re.match(r"^[\d.,]+$", s):
-                    all_nums.append(s)
-                    j += 1
-                elif re.match(r"^[\d.,]+\s+[\d.,]+$", s):
-                    parts = s.split()
-                    all_nums.extend(parts)
-                    j += 1
-                else:
-                    break
-            mq_values = [v.replace(",", ".") for v in all_nums[:n]]
-            prices = [_parse_euro_amount(v) for v in all_nums[n:2 * n]]
 
         items = []
-        for idx, (desc_raw, hide_count, hide_type) in enumerate(desc_matches):
-            art_m = re.search(r"ART\.\s+(.+?)\s+COL\.", desc_raw)
-            article_name = art_m.group(1).strip() if art_m else None
+        for idx, m in enumerate(pattern.finditer(self.raw_text), start=1):
+            body = re.sub(r"\s+", " ", m.group("body")).strip()
+            desc_raw = f"LEATHER ART. {body}"
+            hide_count = m.group("hide_count")
+            hide_type = re.sub(r"\s+", " ", m.group("hide_type").upper()).strip()
+            amount = _parse_euro_amount(m.group("amount"))
 
-            desc = f"{desc_raw.strip()} ({hide_count} {hide_type})"
-            qty_sqm = mq_values[idx] if idx < len(mq_values) else ""
-            unit_price = prices[idx] if idx < len(prices) else ""
+            qty_sqm = m.group("sqm").replace(",", ".")
+            sqm_unit_price = _parse_euro_amount(m.group("sqm_price"))
 
-            amount = ""
-            if qty_sqm and unit_price:
-                try:
-                    amount = str(round(float(qty_sqm) * float(unit_price), 2))
-                except (ValueError, TypeError):
-                    pass
+            art_m = re.search(r"ART\.\s+(.+?)\s+COL\.", desc_raw, re.IGNORECASE)
+            article_name = art_m.group(1).strip() if art_m else ""
 
             item = {
-                "line_no": str(idx + 1),
-                "description": desc,
+                "line_no": str(idx),
+                "description": f"{desc_raw} ({hide_count} {hide_type})",
                 "hide_count": hide_count,
                 "hide_type": hide_type,
-                "quantity": qty_sqm or hide_count,
-                "unit": "平方米" if qty_sqm else "张",
-                "unit_price": unit_price,
+                "quantity": qty_sqm,
+                "unit": "平方米",
+                "unit_price": sqm_unit_price,
                 "amount": amount,
+                "area_sqm": qty_sqm,
+                "sqm_unit_price": sqm_unit_price,
             }
             if article_name:
                 item["article_name"] = article_name
@@ -1281,7 +1457,7 @@ class InvoiceParser:
                 if not s.startswith("Total") or s.startswith("Tax Total"):
                     continue
                 m = re.search(
-                    r"Total\s*[¥ĉ€]?\s*([\d,]+(?:\.\d+)?)\s*$",
+                    r"Total\s*(?:[¥ĉ€]|A\$)?\s*([\d\s.,]+)\s*$",
                     s,
                     re.IGNORECASE,
                 )
@@ -1357,7 +1533,7 @@ class InvoiceParser:
             # pypdf 常把 Terms 压成一行，如 "4/4/2026 JPY232,454=127"（币种与金额间无空格），
             # 旧正则要求币种后必须有空格，会漏匹配并误落到下面的 \bEUR\b（例如 "2EUR" 碎片）。
             m = re.search(
-                r"\d{1,2}/\d{1,2}/\d{4}\s+(JPY|EUR|USD)",
+                r"\d{1,2}/\d{1,2}/\d{4}\s+(JPY|EUR|USD|AUD|GBP)",
                 self.raw_text,
             )
             if m:
@@ -1366,11 +1542,15 @@ class InvoiceParser:
                 return "JPY"
             if re.search(r"\bEUR\b", self.raw_text):
                 return "EUR"
+            if re.search(r"\bAUD\b", self.raw_text) or "A$" in self.raw_text:
+                return "AUD"
 
         text = self.raw_text
         if "EUR" in text or "€" in text or "Eur" in text:
             return "EUR"
-        if "USD" in text or "$" in text:
+        if re.search(r"\bAUD\b", text) or "A$" in text:
+            return "AUD"
+        if "USD" in text or ("$" in text and "A$" not in text):
             return "USD"
         if "GBP" in text or "£" in text:
             return "GBP"
@@ -1397,7 +1577,10 @@ class InvoiceParser:
                 return _parse_euro_amount(m.group(1))
 
         def _clean_weight(val: str) -> str:
-            v = val.replace(',', '.')
+            raw = (val or "").strip()
+            if re.match(r"^\d{1,3}(?:\.\d{3})+$", raw):
+                return raw.replace(".", "")
+            v = raw.replace(',', '.')
             return v.rstrip("0").rstrip(".") if "." in v else v
 
         if weight_type.upper() == "GROSS":

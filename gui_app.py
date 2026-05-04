@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox
 
 from main import CustomsDocGenerator
 
-APP_VERSION = "v4.3"
+APP_VERSION = "v4.4"
 
 try:
     from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -43,8 +43,8 @@ class CustomsDocGUI:
     def __init__(self, root):
         self.root = root
         self.root.title(f"报关资料生成器 {APP_VERSION}")
-        self.root.geometry("1100x820")
-        self.root.minsize(960, 680)
+        self.root.geometry("1100x900")
+        self.root.minsize(960, 720)
         self.root.configure(bg=BG)
 
         self.base_dir = Path(__file__).resolve().parent
@@ -53,11 +53,14 @@ class CustomsDocGUI:
         self.export_paths: list[str] = []
         self.export_display: list[str] = []
         self.last_output_folder = None
-        self.output_dir_var = tk.StringVar(value=str(self.base_dir / "output"))
+        self._default_output_dir = str(self.base_dir / "output")
+        self.output_dir_var = tk.StringVar(value=self._default_output_dir)
         self.ocr_enabled_var = tk.BooleanVar(value=True)
         self.ocr_lang_var = tk.StringVar(value="eng")
         self.export_fx_var = tk.StringVar(value="")
         self._want_eur_invoice_pdf = False  # toggled by Checkbutton command callback
+        self.eur_standalone_pdf_var = tk.StringVar(value="")
+        self._eur_only_btn_enabled = True
         self.status_var = tk.StringVar(
             value="左侧进口 Invoice PDF；右侧出口请同时添加 CustInvc 发票与 ItemShip 装箱单 PDF；选择输出目录后生成。")
 
@@ -210,9 +213,14 @@ class CustomsDocGUI:
         row += 1
         tk.Label(out_f, text="输出目录:", fg=FG, bg=BG,
                  font=("Helvetica", 11), anchor="w").pack(side="left")
-        tk.Entry(out_f, textvariable=self.output_dir_var,
-                 fg=FG, bg="white",
-                 font=("Helvetica", 11)).pack(
+        self.output_dir_entry = tk.Entry(
+            out_f,
+            textvariable=self.output_dir_var,
+            fg=FG,
+            bg="white",
+            font=("Helvetica", 11),
+        )
+        self.output_dir_entry.pack(
             side="left", fill="x", expand=True, padx=(6, 8))
         tk.Button(out_f, text="选择目录...",
                   command=self._choose_output_dir).pack(side="left")
@@ -276,6 +284,61 @@ class CustomsDocGUI:
             bg=BG,
             font=("Helvetica", 10),
         ).pack(side="left")
+
+        # ── 独立：仅生成 EUR 版 CustInvc PDF ─────────────────
+        eur_only_f = tk.Frame(outer, bg=BG)
+        eur_only_f.grid(row=row, column=0, sticky="ew", pady=(10, 4))
+        row += 1
+        tk.Label(
+            eur_only_f,
+            text="EUR Invoice PDF（单独）：上传非 EUR 的 CustInvc 发票 PDF，按上方汇率生成欧元版（≤1MB 尽量压缩）",
+            fg=FG,
+            bg=BG,
+            font=("Helvetica", 11, "bold"),
+            anchor="w",
+        ).pack(anchor="w")
+        eur_only_row = tk.Frame(eur_only_f, bg=BG)
+        eur_only_row.pack(fill="x", pady=(6, 0))
+        eur_only_row.columnconfigure(0, weight=1)
+        self.eur_standalone_entry = tk.Entry(
+            eur_only_row,
+            textvariable=self.eur_standalone_pdf_var,
+            fg=FG,
+            bg="white",
+            insertbackground=FG,
+            font=("Helvetica", 10),
+            relief="solid",
+            bd=1,
+            highlightthickness=1,
+            highlightbackground="#cccccc",
+            highlightcolor=ACCENT,
+        )
+        self.eur_standalone_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        tk.Button(
+            eur_only_row,
+            text="选择发票 PDF…",
+            command=self._choose_eur_standalone_pdf,
+            width=14,
+        ).grid(row=0, column=1, sticky="e")
+        # macOS 上 tk.Button 的 bg/fg 常被系统主题覆盖，改用 Label 保证蓝底白字
+        self.eur_only_btn = tk.Label(
+            eur_only_f,
+            text="生成 EUR Invoice PDF",
+            font=("Helvetica", 11, "bold"),
+            fg="white",
+            bg=ACCENT,
+            padx=22,
+            pady=10,
+            cursor="hand2",
+            relief="raised",
+            bd=1,
+        )
+        self.eur_only_btn.pack(anchor="w", pady=(8, 0))
+        self.eur_only_btn.bind("<Button-1>", self._on_eur_only_btn_click)
+        self.eur_only_btn.bind(
+            "<ButtonRelease-1>",
+            lambda e: self.eur_only_btn.config(relief="raised"),
+        )
 
         # ── 操作按钮 ──────────────────────────────────────────
         act_f = tk.Frame(outer, bg=BG)
@@ -341,7 +404,17 @@ class CustomsDocGUI:
                 "请点击「添加…文件」导入 PDF。"
                 "（安装 tkinterdnd2 可启用拖拽）")
 
+        self._sync_output_dir_entry()
         self._update_run_btn()
+
+    def _sync_output_dir_entry(self):
+        """部分 macOS/Tk 下输出目录 Entry 不显示 StringVar 初值，需显式写入。"""
+        od = (self.output_dir_var.get().strip() or self._default_output_dir)
+        self.output_dir_var.set(od)
+        ent = getattr(self, "output_dir_entry", None)
+        if ent is not None:
+            ent.delete(0, tk.END)
+            ent.insert(0, od)
 
     def _bind_drop_redraw(self, canvas: tk.Canvas, main_text: str):
         def _redraw(event=None):
@@ -374,7 +447,10 @@ class CustomsDocGUI:
     def _update_run_btn(self):
         """Gray when not ready, blue when ready."""
         has_any = bool(self.import_paths or self.export_paths)
-        has_output = bool(self.output_dir_var.get().strip())
+        od = self.output_dir_var.get().strip()
+        if getattr(self, "output_dir_entry", None) is not None:
+            od = self.output_dir_entry.get().strip() or od
+        has_output = bool(od or self._default_output_dir)
         if has_any and has_output:
             self._run_btn_enabled = True
             self.run_btn.config(bg=ACCENT, fg="white", cursor="hand2")
@@ -408,7 +484,12 @@ class CustomsDocGUI:
     def _choose_output_dir(self):
         path = filedialog.askdirectory(title="选择输出目录")
         if path:
-            self.output_dir_var.set(path)
+            p = str(Path(path).expanduser().resolve())
+            self.output_dir_var.set(p)
+            ent = getattr(self, "output_dir_entry", None)
+            if ent is not None:
+                ent.delete(0, tk.END)
+                ent.insert(0, p)
             self.root.update_idletasks()
             self._update_run_btn()
 
@@ -522,11 +603,116 @@ class CustomsDocGUI:
         """Checkbutton command callback — flip the plain Python bool each click."""
         self._want_eur_invoice_pdf = not self._want_eur_invoice_pdf
 
+    def _choose_eur_standalone_pdf(self):
+        path = filedialog.askopenfilename(
+            title="选择 CustInvc 发票 PDF",
+            filetypes=[("PDF", "*.pdf"), ("All files", "*.*")],
+        )
+        if path:
+            p = str(Path(path).expanduser().resolve())
+            self.eur_standalone_pdf_var.set(p)
+            # 部分环境下仅靠 StringVar 不刷新显示，同步写入 Entry
+            ent = getattr(self, "eur_standalone_entry", None)
+            if ent is not None:
+                ent.delete(0, tk.END)
+                ent.insert(0, p)
+                ent.xview_moveto(1.0)
+            self.root.update_idletasks()
+
+    def _on_eur_only_btn_click(self, event=None):
+        if not self._eur_only_btn_enabled:
+            return
+        self._start_eur_standalone()
+
+    def _start_eur_standalone(self):
+        pdf = self.eur_standalone_pdf_var.get().strip()
+        out = self.output_dir_var.get().strip() or self._default_output_dir
+        if not pdf:
+            messagebox.showwarning("提示", "请先选择发票 PDF")
+            return
+        if not Path(pdf).exists():
+            messagebox.showerror("错误", "所选文件不存在")
+            return
+        fx_raw = (
+            self.fx_entry.get().strip()
+            if getattr(self, "fx_entry", None) is not None
+            else self.export_fx_var.get().strip()
+        )
+        fx = None
+        if fx_raw:
+            try:
+                fx = float(fx_raw.replace(",", "."))
+                if fx <= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror(
+                    "汇率无效",
+                    "请填写大于 0 的汇率，或留空（仅当发票已为 EUR 时）。",
+                )
+                return
+        self._eur_only_btn_enabled = False
+        self.eur_only_btn.config(
+            bg=BTN_GRAY, fg="#eeeeee", cursor="arrow", relief="raised")
+        self._set_status("正在生成 EUR Invoice PDF…")
+        # Tk 变量必须在主线程读取，不可在后台线程里 .get()
+        ocr_lang = (self.ocr_lang_var.get().strip() or "eng")
+        enable_ocr = self.ocr_enabled_var.get()
+        threading.Thread(
+            target=self._eur_standalone_worker,
+            args=(pdf, out, fx, enable_ocr, ocr_lang),
+            daemon=True,
+        ).start()
+
+    def _eur_standalone_worker(self, pdf, out, fx, enable_ocr, ocr_lang):
+        try:
+            from eur_invoice_standalone import convert_custinvc_to_eur_pdf_safe
+
+            path, err = convert_custinvc_to_eur_pdf_safe(
+                pdf,
+                out,
+                fx_units_per_eur=fx,
+                enable_ocr=enable_ocr,
+                ocr_lang=ocr_lang,
+            )
+            if path:
+                msg = f"已生成:\n{path}"
+                if err:
+                    msg += f"\n\n提示: {err}"
+                self.root.after(
+                    0,
+                    lambda m=msg: messagebox.showinfo("完成", m),
+                )
+                self.root.after(
+                    0,
+                    lambda p=path: self._set_status(f"EUR PDF: {p}"),
+                )
+                self.last_output_folder = str(Path(path).parent)
+            else:
+                self.root.after(
+                    0,
+                    lambda e=err: messagebox.showerror("失败", e or "未知错误"),
+                )
+                self.root.after(
+                    0,
+                    lambda: self._set_status("EUR PDF 生成失败"),
+                )
+        finally:
+            self.root.after(0, self._eur_only_btn_reset)
+
+    def _eur_only_btn_reset(self):
+        self._eur_only_btn_enabled = True
+        self.eur_only_btn.config(
+            bg=ACCENT, fg="white", cursor="hand2", relief="raised")
+
     def _read_eur_invoice_pdf_wanted(self) -> bool:
         return self._want_eur_invoice_pdf
 
     def _start_generate(self):
-        output_dir = self.output_dir_var.get().strip()
+        if getattr(self, "output_dir_entry", None) is not None:
+            output_dir = self.output_dir_entry.get().strip()
+        else:
+            output_dir = self.output_dir_var.get().strip()
+        output_dir = output_dir or self._default_output_dir
         if not self.import_paths and not self.export_paths:
             messagebox.showwarning(
                 "提示",
@@ -544,9 +730,6 @@ class CustomsDocGUI:
                     f"{label}文件不存在，请检查:\n{missing[0]}",
                 )
                 return
-        if not output_dir:
-            messagebox.showwarning("提示", "请先选择输出目录")
-            return
 
         self.root.update_idletasks()
         # 以控件选中态为准（与汇率框同理，避免 Var 与 Tk 内部状态不一致）
@@ -636,7 +819,7 @@ class CustomsDocGUI:
                 generator = CustomsDocGenerator(
                     config_path=str(
                         self.base_dir / "data"
-                        / "supplier_product_mapping.yaml"
+                        / "supplier_product_mapping_import.yaml"
                     ),
                     templates_dir=str(self.base_dir / "templates"),
                 )
@@ -668,7 +851,7 @@ class CustomsDocGUI:
                 generator = CustomsDocGenerator(
                     config_path=str(
                         self.base_dir / "data"
-                        / "supplier_product_mapping.yaml"
+                        / "supplier_product_mapping_export.yaml"
                     ),
                     templates_dir=str(self.base_dir / "templates"),
                     export_templates_dir=str(

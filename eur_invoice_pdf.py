@@ -8,6 +8,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+
+def _thousands_space_int(n: int) -> str:
+    n = abs(int(n))
+    s = str(n)
+    parts: List[str] = []
+    while len(s) > 3:
+        parts.append(s[-3:])
+        s = s[:-3]
+    parts.append(s)
+    return " ".join(reversed(parts))
+
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -44,13 +55,19 @@ def _register_unicode_font() -> str:
 
 
 def _fmt_money_eur(s: Any) -> str:
+    """EUR 欧式数字（无 € 前缀；千分位空格，小数 ','，始终两位小数）。"""
     try:
-        v = float(str(s).replace(",", "").strip())
+        v = float(str(s).replace(",", "").replace(" ", "").strip())
     except (ValueError, TypeError):
         return str(s)
-    if abs(v - round(v)) < 1e-6:
-        return f"{int(round(v)):,}"
-    return f"{v:,.2f}"
+    neg = v < 0
+    av = abs(v)
+    cents_total = int(round(av * 100 + 1e-9))
+    whole = cents_total // 100
+    cents = cents_total % 100
+    ws = _thousands_space_int(whole)
+    body = f"{ws},{cents:02d}"
+    return f"-{body}" if neg else body
 
 
 def _safe_line(s: str, font: str) -> str:

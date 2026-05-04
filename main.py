@@ -14,15 +14,28 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Union
 
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+
 # 出口 PDF → export_templates/ 填充；若仍见「待实现」占位 txt，说明运行的是旧代码/未重打包的 .app
 EXPORT_PIPELINE_VERSION = "export_templates-v2"
-APP_VERSION_LABEL = "v4.3"
+APP_VERSION_LABEL = "v4.4"
+DEFAULT_IMPORT_CONFIG = "data/supplier_product_mapping_import.yaml"
+DEFAULT_EXPORT_CONFIG = "data/supplier_product_mapping_export.yaml"
+LEGACY_CONFIG = "data/supplier_product_mapping.yaml"
 
 
 def _safe_filename(name: Optional[str]) -> str:
     """Replace characters illegal in file/dir names."""
     # invoice_no 等字段可能显式为 None；.get("k", "default") 在 k 存在且值为 None 时仍会得到 None。
     return re.sub(r'[\\/:*?"<>|]+', "_", str(name or ""))
+
+
+def _item_text_for_matching(item: dict) -> str:
+    """Alcantara：description=Material 栏；description_supplement=PDF Description 栏（可选）。"""
+    sup = (item.get("description_supplement") or "").strip()
+    mat = (item.get("description") or "").strip()
+    return f"{sup} {mat}".strip() if sup else mat
 
 
 def _write_export_run_info(
@@ -62,10 +75,12 @@ class CustomsDocGenerator:
 
     def __init__(
         self,
-        config_path: str = "data/supplier_product_mapping.yaml",
+        config_path: str = DEFAULT_IMPORT_CONFIG,
         templates_dir: str = "templates",
         export_templates_dir: str = "export_templates",
     ):
+        if config_path == DEFAULT_IMPORT_CONFIG and not Path(config_path).exists():
+            config_path = LEGACY_CONFIG
         self.config_loader = ConfigLoader(config_path)
         self.templates_dir = Path(templates_dir)
         self.export_templates_dir = Path(export_templates_dir)
@@ -105,12 +120,15 @@ class CustomsDocGenerator:
         print("\n2. 匹配供应商信息...")
         if supplier_code:
             self.supplier_info = self.config_loader.get_supplier_info(supplier_code)
+            if self.supplier_info:
+                self.invoice_data["supplier_code"] = supplier_code
         else:
             match_result = self.config_loader.match_supplier_by_name(
                 self.invoice_data.get("supplier_name", "")
             )
             if match_result:
                 supplier_code, self.supplier_info = match_result
+                self.invoice_data["supplier_code"] = supplier_code
                 print(f"   匹配供应商: {self.supplier_info.get('name')} (code: {supplier_code})")
             else:
                 print("   警告: 未找到匹配的供应商")
@@ -140,10 +158,14 @@ class CustomsDocGenerator:
         print("\n6. 生成申报要素...")
         element_files = self._generate_declaration_elements(output_path)
 
+        print("\n7. 检查待维护进口商品...")
+        review_files = self._generate_import_mapping_review(output_path)
+
         result = {
             "contract": contract_files,
             "customs_declaration": customs_files,
             "declaration_elements": element_files,
+            "mapping_review": review_files,
         }
 
         print("\n" + "=" * 50)
@@ -256,6 +278,10 @@ class CustomsDocGenerator:
         print("\n[出口] 解析发票 PDF...")
         parser = InvoiceParser(working_pdf)
         self.invoice_data = parser.parse()
+        export_mapping_xlsx = self.export_templates_dir / "出口申报要素对应表.xlsx"
+        if export_mapping_xlsx.exists():
+            self.invoice_data["item_mapping_xlsx"] = str(export_mapping_xlsx)
+        self.invoice_data["mapping_flow"] = "export"
         if packing_slip_data:
             inv_no_pdf = (self.invoice_data.get("invoice_no") or "").strip()
             pref = str(packing_slip_data.get("invoice_ref") or "").strip()
@@ -286,6 +312,7 @@ class CustomsDocGenerator:
         supplier_code = None
         if match_result:
             supplier_code, self.supplier_info = match_result
+            self.invoice_data["supplier_code"] = supplier_code
             print(f"   出口: 供应商 {self.supplier_info.get('name')} ({supplier_code})")
         else:
             self.supplier_info = {}
@@ -373,6 +400,19 @@ class CustomsDocGenerator:
                         print(f"   EUR 版 Invoice PDF 生成失败（ReportLab）: {ex2}")
                         traceback.print_exc()
                 if eur_pdf_ok:
+                    try:
+                        from eur_invoice_standalone import (
+                            DEFAULT_MAX_PDF_BYTES,
+                            ensure_pdf_under_max_bytes,
+                        )
+
+                        _ok, _note = ensure_pdf_under_max_bytes(
+                            Path(eur_pdf), DEFAULT_MAX_PDF_BYTES
+                        )
+                        if _note:
+                            print(f"   {_note}")
+                    except Exception:
+                        pass
                     generated.append(str(eur_pdf))
                 else:
                     print(
@@ -564,7 +604,7 @@ class CustomsDocGenerator:
 
         # 次选: 按商品描述关键词匹配
         for item in items:
-            desc = item.get("description", "")
+            desc = _item_text_for_matching(item)
             match = self.config_loader.match_product_by_keywords(desc, supplier_code)
             if match:
                 _, info = match
@@ -572,7 +612,7 @@ class CustomsDocGenerator:
 
         # 最后: 按成分匹配 (West Trading面料)
         for item in items:
-            composition = item.get("composition", item.get("description", ""))
+            composition = item.get("composition", _item_text_for_matching(item))
             match = self.config_loader.match_fabric_by_composition(composition, supplier_code)
             if match:
                 _, info = match
@@ -639,6 +679,7 @@ class CustomsDocGenerator:
                 self.product_info or {},
                 str(output_file),
                 product_info_map=self._build_product_info_map(),
+                config_path=self.config_loader.config_path,
             )
             print(f"   已生成: {output_file}")
             return [str(output_file)]
@@ -670,6 +711,99 @@ class CustomsDocGenerator:
             import traceback
             traceback.print_exc()
             return []
+
+    def _generate_import_mapping_review(self, output_dir: Path) -> list:
+        """输出未匹配到 HS/品名的进口商品，方便补充进口识别规则表。"""
+        items = self.invoice_data.get("customs_items") or self.invoice_data.get("items", [])
+        if not items:
+            return []
+
+        try:
+            groups = build_declaration_groups(
+                items,
+                self.invoice_data,
+                self.product_info or {},
+                self._build_product_info_map(),
+                self.config_loader.config_path,
+            )
+        except Exception as e:
+            print(f"   进口商品识别检查失败: {e}")
+            return []
+
+        unresolved = []
+        for group in groups:
+            if group.get("hs_code") and group.get("product_name"):
+                continue
+            unresolved.extend(group.get("items") or [])
+
+        if not unresolved:
+            print("   无待维护商品")
+            return []
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        invoice_no = _safe_filename(self.invoice_data.get("invoice_no") or "UNKNOWN")
+        output_file = output_dir / f"待维护进口商品_{invoice_no}_{timestamp}.xlsx"
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "待维护进口商品"
+        headers = [
+            "发票号",
+            "供应商代码",
+            "供应商名称",
+            "item_code",
+            "item_code_prefix",
+            "article_name",
+            "description",
+            "description_supplement",
+            "composition",
+            "hide_type",
+            "quantity",
+            "unit",
+            "amount",
+            "建议内部ITEM / YAML品类",
+            "备注",
+        ]
+        ws.append(headers)
+        supplier_code = self.invoice_data.get("supplier_code", "")
+        supplier_name = self.invoice_data.get("supplier_name", "")
+        for item in unresolved:
+            ws.append(
+                [
+                    self.invoice_data.get("invoice_no", ""),
+                    supplier_code,
+                    supplier_name,
+                    item.get("item_code", ""),
+                    item.get("item_code_prefix", ""),
+                    item.get("article_name", ""),
+                    item.get("description", ""),
+                    item.get("description_supplement", ""),
+                    item.get("composition", ""),
+                    item.get("hide_type", ""),
+                    item.get("quantity", ""),
+                    item.get("unit", ""),
+                    item.get("amount", ""),
+                    "",
+                    "在 data/进口商品识别规则.xlsx 中补充规则",
+                ]
+            )
+
+        fill = PatternFill("solid", fgColor="7F6000")
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        widths = [16, 14, 26, 18, 16, 22, 36, 36, 24, 16, 12, 10, 12, 22, 34]
+        for idx, width in enumerate(widths, 1):
+            ws.column_dimensions[chr(64 + idx)].width = width
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = f"A1:O{ws.max_row}"
+        wb.save(output_file)
+        print(f"   已生成待维护清单: {output_file}")
+        return [str(output_file)]
 
     def _find_template(self, names: list) -> Path:
         for name in names:
@@ -738,7 +872,7 @@ class CustomsDocGenerator:
 def main():
     parser = argparse.ArgumentParser(description="报关资料生成器")
     parser.add_argument("invoice", nargs="?", help="Invoice PDF文件路径")
-    parser.add_argument("-c", "--config", default="data/supplier_product_mapping.yaml",
+    parser.add_argument("-c", "--config", default=DEFAULT_IMPORT_CONFIG,
                         help="配置文件路径")
     parser.add_argument("-t", "--templates", default="templates",
                         help="进口模板目录路径（合同/进口报关单等）")

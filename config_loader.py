@@ -81,6 +81,15 @@ class ConfigLoader:
             # 特殊处理DECA GLOBAL
             if "deca" in supplier_name_lower and "deca" in supplier_name_cfg:
                 return code, info
+            # 特殊处理 CAMARI INTERNATIONAL JAPAN
+            if (
+                "camari" in supplier_name_lower
+                and "international" in supplier_name_lower
+                and "japan" in supplier_name_lower
+                and "camari" in supplier_name_cfg
+                and "japan" in supplier_name_cfg
+            ):
+                return code, info
             # 特殊处理WIPELLI
             if "wipelli" in supplier_name_lower and "wipelli" in supplier_name_cfg:
                 return code, info
@@ -195,7 +204,9 @@ class ConfigLoader:
     def get_hs_code_by_item_code(self, item_code: str, supplier_code: str = None) -> str:
         """
         根据item code获取HS code
-        Alcantara规则: 前4位为5012或5015/5030/5010时，HS为5603149000
+        Alcantara规则:
+        - 5012 / 5015 / 5030 / 5010 → 5603149000
+        - 5466 / 5205 / 5143 / 5170 / 5270 → 5903209000
         """
         products = self.config.get("product_categories", {})
 
@@ -220,18 +231,18 @@ class ConfigLoader:
         West Trading规则:
         - 62% wool / 38% pes → HS 5112200000
         - 92% wool / 8% pes → HS 5112190000
-        - 100% pes → HS 5407520091
+        - 100% pes → HS 5407520000
         """
         products = self.config.get("product_categories", {})
         description_lower = description.lower()
 
-        # 按优先级匹配（从最具体到最通用）
+        # 兼容旧入口；主要流程会在 item_declaration_mapper 中按实际百分比动态归类。
         composition_map = [
-            ("62% wool / 38% pes", "wool_fabric_62_38"),
-            ("62% wool / 38% pes", "wool_fabric_62_38"),
-            ("92% wool / 8% pes", "wool_fabric_92_8"),
-            ("100% pes", "polyester_fabric_100"),
-            ("100% polyester", "polyester_fabric_100"),
+            ("62% wool / 38% pes", "west_wool_lt85"),
+            ("92% wool / 8% pes", "west_wool_ge85"),
+            ("100% wool", "west_wool_ge85"),
+            ("100% pes", "west_pes_ge85"),
+            ("100% polyester", "west_pes_ge85"),
         ]
 
         for pattern, product_code in composition_map:

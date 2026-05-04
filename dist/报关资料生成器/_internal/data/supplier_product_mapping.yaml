@@ -177,23 +177,49 @@ product_categories:
     name: "牛皮"
     category: "皮革"
     sub_category: "头层皮"
-    hs_code: "4107121090"  # 默认HS Code，实际情况可能为41071291
-    supplier: ["crest_leather", "wipelli", "mastrotto"]  # 牛皮供应商
+    hs_code: "41071291"
+    supplier: ["crest_leather", "wipelli", "mastrotto"]
+    hide_type: "HIDES"
     declaration_elements:
-      涂覆: "涂覆颜色涂层"
-      粒面层: "无毛粒面剖层"
-      动物种类: "牛，不是源于濒危野生牛"
-      规格: "整张，头层皮，厚度0.8-1.3mm，平均面积 平方米"
-      颜色: "等"
-      用途: "用于家具包覆"
-      鞣制: "非油鞣"
-      计量单位: "张"
+      品名: "牛皮"
+      制作或保存方法: "涂覆颜色涂层"
+      种类: "牛"
+      状态: "整张，无毛粒面剖层"
+      濒危: "不是源于濒危野生牛或马"
+      规格: "厚度0.8-1.4mm，平均面积： 平方米"
+      颜色: ""
+      用途: "皮具或家具"
+      是否油鞣: "非油鞣"
+      牛皮层: "头层"
+      净重: " KG"
     legal_unit: "张"
     second_unit: "千克"
     supervision: ""
     inspection: ""
-    # 注：牛皮产品有多种articles，HS Code和申报要素可能因具体产品而异
-    # 运行时如与默认配置不同，系统会提示人工确认
+
+  cowhide_half_hide:
+    name: "牛皮"
+    category: "皮革"
+    sub_category: "头层皮"
+    hs_code: "4107920090"
+    supplier: ["crest_leather", "wipelli", "mastrotto"]
+    hide_type: "HALF HIDES"
+    declaration_elements:
+      品名: "牛皮"
+      制作或保存方法: "涂覆颜色涂层"
+      种类: "牛"
+      状态: "非整张，无毛粒面剖层"
+      濒危: "不是源于濒危野生牛或马"
+      规格: "厚度0.8-1.4mm，平均面积： 平方米"
+      颜色: ""
+      用途: "皮具或家具"
+      是否油鞣: "非油鞣"
+      牛皮层: "头层"
+      净重: " KG"
+    legal_unit: "张"
+    second_unit: "千克"
+    supervision: ""
+    inspection: ""
 
   synthetic_leather:
     name: "人造革"
@@ -455,6 +481,105 @@ product_categories:
     supervision: ""
     inspection: ""
 
+  # ---------- 出口 Invoice ITEM 对应（item_declaration_mapper / Excel 申报品名）----------
+  export_hs_392690_misc:
+    name: "塑料制品"
+    category: "塑料制品"
+    hs_code: "3926909090"
+    declaration_elements:
+      品名: "塑料制品"
+      品牌类型: "境外品牌（贴牌生产）"
+      出口享惠情况: "否"
+      用途: "日常或汽车用"
+      材质: "塑料"
+      规格型号: "见发票明细"
+    legal_unit: "千克"
+    second_unit: ""
+
+  export_hs_911390_watch:
+    name: "表带"
+    category: "钟表零件"
+    hs_code: "9113900090"
+    declaration_elements:
+      品名: "表带"
+      品牌类型: "境外品牌（贴牌生产）"
+      出口享惠情况: "否"
+      用途: "配手表用"
+      材质: "塑料或金属等"
+      规格型号: "见发票明细"
+    legal_unit: "千克"
+    second_unit: ""
+
+  export_hs_940199_auto:
+    name: "汽车用纺织制品"
+    category: "纺织制品"
+    hs_code: "9401999000"
+    declaration_elements:
+      品名: "汽车用纺织制品"
+      品牌类型: "境外品牌（贴牌生产）"
+      出口享惠情况: "否"
+      用途: "汽车座椅配套"
+      材质: "纺织材料"
+      规格型号: "见发票明细"
+    legal_unit: "千克"
+    second_unit: ""
+
+  export_hs_420212_luggage:
+    name: "箱包"
+    category: "箱包"
+    hs_code: "4202129000"
+    declaration_elements:
+      品名: "箱包"
+      品牌类型: "境外品牌（贴牌生产）"
+      出口享惠情况: "否"
+      用途: "旅行或日常收纳"
+      材质: "纺织面料或塑料等"
+      规格型号: "见发票明细"
+    legal_unit: "千克"
+    second_unit: ""
+
+  export_hs_482010_notebook:
+    name: "笔记本"
+    category: "纸制品"
+    hs_code: "4820100000"
+    declaration_elements:
+      品名: "笔记本"
+      品牌类型: "境外品牌（贴牌生产）"
+      出口享惠情况: "否"
+      用途: "书写记录"
+      材质: "纸"
+      规格型号: "见发票明细"
+    legal_unit: "千克"
+    second_unit: ""
+
+  export_hs_491110_print:
+    name: "印刷品"
+    category: "印刷品"
+    hs_code: "4911100000"
+    declaration_elements:
+      品名: "印刷品"
+      品牌类型: "境外品牌（贴牌生产）"
+      出口享惠情况: "否"
+      用途: "广告宣传"
+      材质: "纸"
+      规格型号: "见发票明细"
+    legal_unit: "千克"
+    second_unit: ""
+
+  export_microfibre_hs5903209000:
+    name: "超细纤维革"
+    category: "人造革"
+    hs_code: "5903209000"
+    declaration_elements:
+      品名: "超细纤维革"
+      品牌类型: "境外品牌（贴牌生产）"
+      出口享惠情况: "否"
+      用途: "用于汽车内饰或家具包覆"
+      材质: "超细纤维合成革"
+      规格型号: "见发票明细"
+    legal_unit: "千克"
+    second_unit: ""
+
 # 合同模板映射
 contract_templates:
   # 根据供应商或产品类型选择不同模板
@@ -464,6 +589,10 @@ contract_templates:
 customs_declaration_templates:
   default: "报关单模板.docx"
 
-# 申报要素模板映射
+# 申报要素模板映射（进口流程：templates/ 目录，当前程序用空白文档+样式生成，非直接打开该文件）
 declaration_element_templates:
   default: "申报要素模板.docx"
+
+# 出口申报要素 Word 壳（仅出口流程：export_templates/ 目录，与进口模板分离）
+export_declaration_element_templates:
+  default: "申报要素总汇.docx"

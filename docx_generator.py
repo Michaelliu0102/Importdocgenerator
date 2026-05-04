@@ -52,7 +52,7 @@ class DeclarationElementsGenerator:
     def __init__(self, config_path: Optional[str] = None):
         base = Path(__file__).resolve().parent
         self.config_path = config_path or str(
-            base / "data" / "supplier_product_mapping.yaml"
+            base / "data" / "supplier_product_mapping_import.yaml"
         )
 
     def generate(
@@ -178,21 +178,6 @@ class DeclarationElementsGenerator:
                     doc.add_paragraph(f"  {idx}: {key}: {value}")
 
             doc.add_paragraph("")
-
-            # 商品明细
-            para2 = doc.add_paragraph("商品明细:")
-            para2.runs[0].bold = True
-
-            for item in group_items:
-                desc = item.get("description", "")
-                qty = item.get("quantity", "")
-                unit = item.get("unit", "")
-                amount = item.get("amount", "")
-                item_code = item.get("item_code", "")
-                line = f"  {item_code}  {desc}  数量: {qty} {unit}"
-                if amount:
-                    line += f"  金额: {currency} {amount}"
-                doc.add_paragraph(line)
 
             doc.add_paragraph("")
 

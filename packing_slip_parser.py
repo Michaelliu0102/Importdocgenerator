@@ -30,6 +30,7 @@ def country_name_to_cn(name: str) -> str:
         "France": "法国",
         "UK": "英国",
         "United Kingdom": "英国",
+        "Netherlands": "荷兰",
     }
     return m.get(n, n)
 
@@ -116,6 +117,14 @@ class PackingSlipParser:
                 parsed = PackingSlipParser._parse_data_line(line)
                 if parsed[0]:
                     return parsed
+            # 表头下无「…KG …KG」时：Via Air 8 108.5 100（件数、毛重、净重，无 KG 后缀）
+            m_air = re.search(
+                r"Via\s+Air\s+(\d+)\s+([\d.]+)\s+([\d.]+)",
+                text,
+                re.IGNORECASE,
+            )
+            if m_air:
+                return m_air.group(1), m_air.group(2), m_air.group(3)
 
         # 无表头时：匹配 ... 数字 KG 数字 KG 结尾
         for line in text.split("\n"):

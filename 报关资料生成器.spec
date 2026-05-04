@@ -5,7 +5,7 @@ a = Analysis(
     ['gui_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('templates', 'templates'), ('data', 'data')],
+    datas=[('templates', 'templates'), ('export_templates', 'export_templates'), ('data', 'data')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

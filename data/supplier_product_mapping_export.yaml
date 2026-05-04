@@ -1,0 +1,491 @@
+suppliers:
+  supplier_001:
+    name: 供应商A
+    country: 日本
+    address: 东京都朝阳区xxx町1-2-3
+    contact: 田中太郎
+    trade_term: CIF
+    payment_term: T/T 30天
+  alcantara:
+    name: Alcantara S.p.A.
+    country: 意大利
+    address: Via Mecenate, 86, 20138 Milano, Italia
+    contact: ''
+    trade_term: FCA
+    payment_term: 60 DAYS NET
+    tax_id: IT00835580150
+    bank_info: 'BANCO BPM: IBAN: IT79O0503401659000000002900
+
+      INTESA SANPAOLO: IBAN: DE09700208006008018500
+
+      MUFG BANK: IBAN: IT65W0348701600000015504178 (Euro)
+
+      '
+  crest_leather:
+    name: Crest JMT Leather Ltd.
+    country: 英国
+    address: Ground Floor, Meridian House, Suite A, 202-204 Finchley Road, London, NW3 6BX, UK
+    contact: ''
+    trade_term: EXW
+    payment_term: Payment Before Delivery
+    tax_id: GB 980 0976 94
+    bank_info: 'National Westminster Bank: Sort Code:600905, Account:140/00/73173088
+
+      Swift Code: NWBKGB2L
+
+      Correspondent Bank: JP Morgan Chase Bank, Swift: CHASUS33XXX
+
+      '
+  deca_global:
+    name: DECA GLOBAL S.R.L.
+    country: 意大利
+    address: Via Vincenzo Monti 8, Milano MI 20123, Italy
+    contact: ''
+    trade_term: EXW
+    payment_term: 100% TT IN ADVANCE
+    tax_id: IT13273070964
+    bank_info: 'UNICREDIT SPA: BIC/SWIFT: UNCRITM1228
+
+      IBAN: IT58C0200801628000107076875
+
+      '
+  wipelli:
+    name: WIPELLI INTERNATIONAL SRL
+    country: 意大利
+    address: Via Cadorna, 26-36071 Arzignano (VI), Italy
+    contact: ''
+    trade_term: EX WORKS
+    payment_term: 30 DAYS INVOICE DATE
+    tax_id: IT03355020243
+    bank_info: 'BANCO DESIO: BIC/SWIFT BDBDIT22
+
+      IBAN: IT74 D034 4060 1210 0000 0252 400
+
+      '
+  mastrotto:
+    name: Mastrotto (待确认)
+    country: 待确认
+    address: ''
+    contact: ''
+    trade_term: ''
+    payment_term: ''
+    tax_id: ''
+    bank_info: ''
+  west_trading:
+    name: West Trading
+    country: 荷兰
+    address: DE DROOGMAKERIJ 43, NL-1851 LX HEILOO
+    contact: TEL 0031(0)72 - 533 05 91
+    trade_term: DAP (Incoterms 2020)
+    payment_term: Paid in advance
+    tax_id: NL 817 984 999 B01
+    bank_info: 'IBAN: NL27RABO0327004126
+
+      BIC/SWIFT: RABONL2U
+
+      '
+  supplier_002:
+    name: 供应商B
+    country: 德国
+    address: 汉堡市xxx大道45号
+    contact: Hans Mueller
+    trade_term: FOB
+    payment_term: T/T 45天
+product_categories:
+  export_row_02:
+    name: 手机壳
+    category: 出口申报要素对应表
+    hs_code: '3926909090'
+    invoice_item: Phone Case
+    source_row: 2
+    declaration_elements:
+      品名: 手机壳
+      品牌类型: 境外品牌（贴牌生产）
+      出口享惠情况: 是/否
+      用途: 手机保护套
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素5: 品牌（中文或外文名称）
+      净重: 32g
+    legal_unit: 千克
+    second_unit: ''
+  export_row_03:
+    name: 耳机壳
+    category: 出口申报要素对应表
+    hs_code: '3926909090'
+    invoice_item: Airpods Case
+    source_row: 3
+    declaration_elements:
+      品名: 耳机壳
+      品牌类型: 境外品牌（贴牌生产）
+      出口享惠情况: 是/否
+      用途: 耳机保护套
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素5: 品牌（中文或外文名称）
+      净重: 26g
+    legal_unit: 千克
+    second_unit: ''
+  export_row_04:
+    name: 表带
+    category: 出口申报要素对应表
+    hs_code: '9113900090'
+    invoice_item: Watch Band
+    source_row: 4
+    declaration_elements:
+      品名: 表带
+      品牌类型: 境外品牌（贴牌生产）
+      出口享惠情况: 是/否
+      用途: 手表表带
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素5: 品牌（中文或外文名称）
+      净重: 35g
+    legal_unit: 千克
+    second_unit: ''
+  export_row_05:
+    name: 汽车遮阳板套
+    category: 出口申报要素对应表
+    hs_code: '8708299000'
+    invoice_item: Sunvisor Cover
+    source_row: 5
+    declaration_elements:
+      品名: 汽车遮阳板套
+      品牌类型: 无品牌
+      出口享惠情况: 是/否
+      用途: 汽车遮阳板套
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+    legal_unit: 千克
+    second_unit: ''
+  export_row_06:
+    name: 收纳包
+    category: 出口申报要素对应表
+    hs_code: '4202320000'
+    invoice_item: Pouch
+    source_row: 6
+    declaration_elements:
+      品名: 收纳包
+      出口享惠情况: 是/否
+      用途: 多功能收纳包
+      种类: 钱包
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素5: 品牌（中文或外文名称）
+      规格: 25*17 cm
+    legal_unit: 千克
+    second_unit: ''
+  export_row_07:
+    name: 汽车腰靠
+    category: 出口申报要素对应表
+    hs_code: '9404909000'
+    invoice_item: Lumbar Cushion
+    source_row: 7
+    declaration_elements:
+      品名: 汽车腰靠
+      品牌类型: 境外品牌（贴牌生产）
+      出口享惠情况: 是/否
+      用途: 车用座椅腰靠
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯) ，材质（填充物）：Sorona®棉芯
+      要素5: 品牌（中文或外文名称）
+      规格: 40*26*15 cm
+      净重: 335g
+    legal_unit: 千克
+    second_unit: ''
+  export_row_08:
+    name: 汽车头枕
+    category: 出口申报要素对应表
+    hs_code: '9404909000'
+    invoice_item: Headrest Pillow
+    source_row: 8
+    declaration_elements:
+      品名: 汽车头枕
+      出口享惠情况: 是/否
+      用途: 车用座椅头枕
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯) ，材质（填充物）：Sorona®棉芯
+      要素4: 品牌（中文或外文名称）
+      规格: 29*22*8 cm
+      净重: 206g
+    legal_unit: 千克
+    second_unit: ''
+  export_row_09:
+    name: 收纳托盘
+    category: 出口申报要素对应表
+    hs_code: '4205009090'
+    invoice_item: Tray
+    source_row: 9
+    declaration_elements:
+      品名: 收纳托盘
+      品牌类型: 境外品牌（贴牌生产）
+      要素2: 出口享惠情况
+      用途: 多功能收纳托盘
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素5: 品牌（中文或外文名称）
+      规格: 20.4*20.4 cm
+      净重: 72g
+      要素8: 无款号
+    legal_unit: 千克
+    second_unit: ''
+  export_row_10:
+    name: 背包
+    category: 出口申报要素对应表
+    hs_code: '4202119090'
+    invoice_item: Bagpack
+    source_row: 10
+    declaration_elements:
+      品名: 背包
+      品牌类型: 境外品牌（贴牌生产）
+      要素2: 出口享惠情况
+      用途: 背包/书包
+      种类: 背包
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素6: 品牌（中文或外文名称）
+      规格: 31*15*43 cm
+      净重: 1012g
+      要素9: 无款号
+    legal_unit: 千克
+    second_unit: ''
+  export_row_11:
+    name: 拉杆箱
+    category: 出口申报要素对应表
+    hs_code: '4202190090'
+    invoice_item: Luggage
+    source_row: 11
+    declaration_elements:
+      品名: 拉杆箱
+      品牌类型: 境外品牌（贴牌生产）
+      要素2: 出口享惠情况
+      用途: 登机箱/行李箱
+      种类: 行李箱
+      表面材质: 铝镁合金
+      要素6: 品牌（中文或外文名称）
+      规格: 37*23*56 cm
+      净重: 4200g
+      要素9: 无款号
+    legal_unit: 千克
+    second_unit: ''
+  export_row_12:
+    name: 旅行包
+    category: 出口申报要素对应表
+    hs_code: '4202119090'
+    invoice_item: Duffle Bag
+    source_row: 12
+    declaration_elements:
+      品名: 旅行包
+      品牌类型: 境外品牌（贴牌生产）
+      要素2: 出口享惠情况
+      用途: 旅行包
+      种类: 旅行包
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素6: 品牌（中文或外文名称）
+      规格: 50*23*29 cm
+      净重: 1035g
+      要素9: 无款号
+    legal_unit: 千克
+    second_unit: ''
+  export_row_13:
+    name: 钥匙套
+    category: 出口申报要素对应表
+    hs_code: '4202220000'
+    invoice_item: Key Fob
+    source_row: 13
+    declaration_elements:
+      品名: 钥匙套
+      品牌类型: 境外品牌（贴牌生产
+      要素2: 出口享惠情况
+      用途: 汽车钥匙保护套
+      种类: 钥匙包
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素6: 品牌（中文或外文名称）
+      规格: 9*6*2 cm
+      净重: 7g
+      要素9: 无款号
+    legal_unit: 千克
+    second_unit: ''
+  export_row_14:
+    name: 卡包
+    category: 出口申报要素对应表
+    hs_code: '4202320000'
+    invoice_item: Card Holder
+    source_row: 14
+    declaration_elements:
+      品名: 卡包
+      品牌类型: 境外品牌（贴牌生产
+      要素2: 出口享惠情况
+      用途: 收纳卡包
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素5: 品牌（中文或外文名称）
+      净重: 30g
+    legal_unit: 千克
+    second_unit: ''
+  export_row_15:
+    name: PVC合成革汽车座椅套
+    category: 出口申报要素对应表
+    hs_code: '3926909090'
+    invoice_item: Seat Cover
+    source_row: 15
+    declaration_elements:
+      品名: PVC合成革汽车座椅套
+      要素1: 无品牌
+      要素2: 出口享惠情况
+      成分含量: 100%PVC合成革
+      用途: 汽车装饰用
+    legal_unit: 千克
+    second_unit: ''
+  export_row_16:
+    name: 笔记本
+    category: 出口申报要素对应表
+    hs_code: '4820100000'
+    invoice_item: Notebook
+    source_row: 16
+    declaration_elements:
+      品名: 笔记本
+      要素1: 无品牌
+      要素2: 出口享惠
+      材质: 封面：超细纤维面料（68%涤纶，32%聚氨酯）
+      内页: 80g道林纸
+      规格: A4，100页，胶装
+    legal_unit: 千克
+    second_unit: ''
+  export_row_17:
+    name: 眼镜盒
+    category: 出口申报要素对应表
+    hs_code: '4202320000'
+    invoice_item: Spectacle Case
+    source_row: 17
+    declaration_elements:
+      品名: 眼镜盒
+      出口享惠情况: 是/否
+      用途: 眼镜收纳盒
+      种类: 眼镜盒
+      表面材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素5: 品牌（中文或外文名称）
+    legal_unit: 千克
+    second_unit: ''
+  export_row_18:
+    name: 色卡
+    category: 出口申报要素对应表
+    hs_code: '4911101000'
+    invoice_item: Color Cards
+    source_row: 18
+    declaration_elements:
+      品名: 色卡
+      要素1: 无品牌
+      出口享惠情况: 无
+      用途: 无商业价值
+    legal_unit: 千克
+    second_unit: ''
+  export_row_19:
+    name: 安全带护套
+    category: 出口申报要素对应表
+    hs_code: '6307909000'
+    invoice_item: Seat Belt Cover
+    source_row: 19
+    declaration_elements:
+      品名: 安全带护套
+      出口享惠: 无
+      成分含量: 面层：68%涤纶，32%聚氨酯
+      底层: 100%涤纶
+      货号: 无
+    legal_unit: 千克
+    second_unit: ''
+  export_row_20:
+    name: 钥匙扣
+    category: 出口申报要素对应表
+    hs_code: '4205009090'
+    invoice_item: KEY RING
+    source_row: 20
+    declaration_elements:
+      品名: 钥匙扣
+      出口享惠情况: 是/否
+      用途: 钥匙扣
+      材质: 人造皮革Alcantara ( 68%涤纶，32%聚氨酯)
+      要素4: 品牌（中文或外文名称）
+    legal_unit: 千克
+    second_unit: ''
+  export_row_21:
+    name: 面料
+    category: 出口申报要素对应表
+    hs_code: '5603149000'
+    invoice_item: 5012/5015
+    source_row: 21
+    declaration_elements:
+      品名: 面料
+      加工方法: 针刺
+      化学纤维长丝制应注明: 化学纤维长丝制
+      要素3: 每平方米克重 克/平方米
+      要素4: 成分含量68%涤纶32%聚氨酯
+      要素5: 用途用于汽车内部装饰/家具包覆
+      要素6: 品牌Alcantara牌
+    legal_unit: 千克
+    second_unit: ''
+  export_row_22:
+    name: 牛皮
+    category: 出口申报要素对应表
+    hs_code: '4107121090'
+    invoice_item: NAPPA/VERONA
+    source_row: 22
+    declaration_elements:
+      涂覆: 涂覆颜色涂层
+      粒面层: 无毛粒面剖层
+      动物种类: 牛，不是源于濒危野生牛
+      规格: 整张，头层皮
+      颜色: 等
+      用途: 用于家具包覆
+      鞣制: 非油鞣
+      计量单位: 张
+      品名: 牛皮
+    legal_unit: 千克
+    second_unit: ''
+  export_row_23:
+    name: 面料
+    category: 出口申报要素对应表
+    hs_code: '5112200000'
+    invoice_item: FA3018/FA3055/FA3067/FA3074/FA3132/FA3217/FA3258/FA3272/FA3570/FA8045/FA8065/FA8118/FA8128/FA8165/FA8166/FA8217/FA8237/FA8271/FA8475
+    source_row: 23
+    declaration_elements:
+      品名: 面料
+      要素1: 羊毛
+      要素2: 机织
+      精梳 成分: '%羊毛，%涤纶，幅宽1.45米，克重：g/m2；'
+    legal_unit: 千克
+    second_unit: ''
+  export_row_24:
+    name: 面料
+    category: 出口申报要素对应表
+    hs_code: '5407520091'
+    invoice_item: FA5990/FA8517/FA8553/FA8598
+    source_row: 24
+    declaration_elements:
+      品名: 面料
+      要素1: 机织
+      要素2: 染色
+      平纹100%涤纶，幅宽145cm，克重: g/m2
+    legal_unit: 千克
+    second_unit: ''
+  export_row_25:
+    name: 面料
+    category: 出口申报要素对应表
+    hs_code: '5112190000'
+    invoice_item: FA8626/FA8525/FA8637/FA8765/FA8354/FA8326/FA8093/FA8074/FA8065/FA8057/FA8026/FA8013/FA2729/FA2202/FA2002/FA2566
+    source_row: 25
+    declaration_elements:
+      品名: 面料
+      要素1: 羊毛
+      要素2: 机织
+      精梳 成分: 92%羊毛，8%尼龙，幅宽1.45米，克重：g/m2；
+    legal_unit: 千克
+    second_unit: ''
+  export_row_26:
+    name: 超细纤维革
+    category: 出口申报要素对应表
+    hs_code: '5903209000'
+    invoice_item: MF
+    source_row: 26
+    declaration_elements:
+      品名: 超细纤维革
+      要素1: 无品牌
+      出口享惠情况: 是/否
+      处理材质: 聚氨酯
+      成分含量: 50%尼龙，50%聚氨酯
+      处理工艺: 涂布、浸渍
+      要素6: 非双面涂层
+    legal_unit: 千克
+    second_unit: ''
+export_declaration_element_templates:
+  default: 申报要素总汇.docx

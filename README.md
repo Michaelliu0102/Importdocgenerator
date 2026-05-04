@@ -19,12 +19,19 @@ customs_doc_generator/
 ├── config_loader.py           # 配置加载模块
 ├── requirements.txt           # 依赖包
 ├── data/
-│   └── supplier_product_mapping.yaml  # 供应商和产品配置
-└── templates/
+│   ├── supplier_product_mapping_import.yaml  # 进口供应商和产品配置
+│   ├── 进口商品识别规则.xlsx                    # 进口供应商描述/料号到内部 ITEM 的规则
+│   ├── item和品名对应表.xlsx                    # 与出口申报要素对应表同结构的内部 ITEM 表
+│   └── supplier_product_mapping_export.yaml  # 出口供应商和产品配置
+├── templates/
     ├── CONTRACT_CAMARI_TEMPLATE.xlsx  # 合同（买方固定 CAMARI，优先使用）
     ├── CONTRACT.xlsx                  # 旧版合同（兼容）
     ├── FedEx报关单模板.xlsx
     └── 申报要素.docx
+└── export_templates/
+    ├── 出口申报要素对应表.xlsx
+    ├── export_declaration.xlsx
+    └── 申报要素总汇.docx
 ```
 
 ## 安装
@@ -65,7 +72,7 @@ python main.py /path/to/invoice.pdf -s supplier_001 -p product_001 -o output
 ### 参数说明
 
 - `invoice`: Invoice PDF文件路径
-- `-c, --config`: 配置文件路径（默认: data/supplier_product_mapping.yaml）
+- `-c, --config`: 配置文件路径（默认: data/supplier_product_mapping_import.yaml）
 - `-t, --templates`: 模板目录路径（默认: templates）
 - `-s, --supplier`: 供应商代码
 - `-p, --product`: 产品代码
@@ -74,7 +81,13 @@ python main.py /path/to/invoice.pdf -s supplier_001 -p product_001 -o output
 
 ## 配置说明
 
-编辑 `data/supplier_product_mapping.yaml` 来配置：
+进口建议按“两层”维护：
+
+1. `data/进口商品识别规则.xlsx`：维护供应商发票里的描述、料号、成分、hide type 如何匹配到内部 ITEM。
+2. `export_templates/出口申报要素对应表.xlsx`：维护内部 ITEM 对应的申报品名、HS Code、申报要素。
+3. `data/supplier_product_mapping_import.yaml`：维护进口供应商资料，以及少量仍未迁移到内部 ITEM 表的进口专用兜底品类。
+
+`data/item和品名对应表.xlsx` 与出口申报要素对应表保持同结构，作为旧代码兼容表；新的进口/出口逻辑都优先围绕内部 ITEM 表工作。
 
 ### 供应商信息
 
@@ -108,6 +121,19 @@ product_categories:
     supervision: "无"  # 监管条件
     inspection: "L"  # 检验检疫类别
 ```
+
+### 进口商品识别规则
+
+`data/进口商品识别规则.xlsx` 的常用列：
+
+- `供应商`: 填 YAML 里的供应商代码，可用逗号分隔；留空表示所有供应商
+- `匹配字段`: `item_code`、`item_code_prefix`、`description`、`composition`、`hide_type`、`article_name`、`任意文本`
+- `匹配方式`: `包含`、`等于`、`前缀`、`正则`
+- `匹配内容`: 多个关键词可用英文分号或逗号分隔
+- `内部ITEM / YAML品类`: 优先填写 `export_templates/出口申报要素对应表.xlsx` 的 `ITEM on Invoice`；也兼容 `supplier_product_mapping_import.yaml` 里的 `product_categories` key
+- `优先级`: 数字越大越先匹配
+
+如果进口商品没有识别到 HS Code 或申报品名，程序会在输出目录生成 `待维护进口商品_*.xlsx`，把里面的信息补成新规则即可。
 
 ## 合同 Excel 模板（CONTRACT_CAMARI_TEMPLATE.xlsx）
 
