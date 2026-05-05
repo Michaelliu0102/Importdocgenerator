@@ -45,6 +45,24 @@ pip install -r requirements.txt
 - macOS 项目内额外带了一份 `Tk 9` 兼容的 `tkdnd` 动态库，启动脚本会自动同步到虚拟环境中。
 - 系统自带 Python 的 Tk 8.5 过旧，不建议用于 GUI 运行。
 
+## GitHub Actions 打包
+
+仓库已内置自动打包 workflow：
+
+- 手动触发：进入 GitHub `Actions` 页面，运行 `Build Desktop Packages`
+- 自动发版：推送形如 `v1.0.0` 的 tag 后，会自动构建并把包挂到 GitHub Release
+
+产物包括：
+
+- `ClearanceOS-mac-intel.zip`
+- `ClearanceOS-windows.zip`
+
+说明：
+
+- `macOS Intel` 构建运行在 `macos-13` runner
+- `Windows` 构建运行在 `windows-2022` runner
+- Windows 压缩包内包含整个 `dist/ClearanceOS` 目录，用户解压后运行其中的 `ClearanceOS.exe`
+
 ## Invoice 可编辑 PDF 模板（macOS 预览可修改）
 
 为了以后在 macOS `预览`里直接点进去修改（不再每次解析 PDF），项目内已新增一个生成脚本，可生成带表单字段的 `invoice_form_template.pdf`（AcroForm）。

@@ -26,4 +26,4 @@ pyinstaller ^
 
 echo.
 echo Build complete: dist\ClearanceOS\ClearanceOS.exe
-pause
+if not defined CI pause
