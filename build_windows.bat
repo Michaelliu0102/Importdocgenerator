@@ -10,10 +10,10 @@ if not exist ".venv" (
 
 call ".venv\Scripts\activate.bat"
 
+python -m pip uninstall -y tkinterdnd2
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip install --upgrade pyinstaller
-python -m pip install --upgrade tkinterdnd2
 
 pyinstaller ^
   --noconfirm ^

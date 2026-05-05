@@ -40,6 +40,11 @@ customs_doc_generator/
 pip install -r requirements.txt
 ```
 
+说明：
+- `requirements.txt` 已包含 `tkinterdnd2-universal`，用于启用 GUI 文件拖拽。
+- macOS 项目内额外带了一份 `Tk 9` 兼容的 `tkdnd` 动态库，启动脚本会自动同步到虚拟环境中。
+- 系统自带 Python 的 Tk 8.5 过旧，不建议用于 GUI 运行。
+
 ## Invoice 可编辑 PDF 模板（macOS 预览可修改）
 
 为了以后在 macOS `预览`里直接点进去修改（不再每次解析 PDF），项目内已新增一个生成脚本，可生成带表单字段的 `invoice_form_template.pdf`（AcroForm）。

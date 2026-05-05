@@ -14,3 +14,7 @@ pyyaml>=6.0
 # EUR invoice PDF (ReportLab fallback; overlay uses PyMuPDF)
 reportlab>=4.0.0
 pymupdf>=1.24.0
+
+# Desktop drag-and-drop support.
+# Use the universal fork so macOS arm64 can load the newer tkdnd runtime.
+tkinterdnd2-universal>=1.7.3

@@ -3,9 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Prefer Homebrew Python 3.14 (Tk 9.0), then 3.13, then system python
+# Prefer Homebrew Python, then fall back to system python if needed.
 pick_python_with_tk() {
-  for py in /opt/homebrew/bin/python3.14 /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3 /usr/bin/python3 python3; do
+  local py
+  for py in /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.14 /opt/homebrew/bin/python3 /usr/bin/python3 python3; do
     if [[ -x "$py" ]]; then
       if "$py" - <<'PYEOF' >/dev/null 2>&1
 import tkinter
@@ -28,7 +29,8 @@ if [[ -z "${PY_BIN:-}" ]]; then
 fi
 
 echo "使用 Python: $PY_BIN"
-"$PY_BIN" -c "import tkinter; print(f'Tk 版本: {tkinter.TkVersion}')"
+TK_VERSION="$("$PY_BIN" -c "import tkinter; print(tkinter.TkVersion)")"
+echo "Tk 版本: $TK_VERSION"
 
 # If .venv exists but was built with a different Python, recreate it
 NEED_VENV=0
@@ -55,8 +57,30 @@ fi
 source .venv/bin/activate
 
 python -m pip install --upgrade pip -q
+python -m pip uninstall -y tkinterdnd2 -q 2>/dev/null || true
 python -m pip install -r requirements.txt -q
-python -m pip install -U tkinterdnd2 -q 2>/dev/null || echo "提示: tkinterdnd2 安装失败，拖拽功能不可用。"
+
+python - <<'PY'
+from pathlib import Path
+import shutil
+import site
+
+vendor = Path("vendor/tkdnd/osx-arm64/libtcl9tkdnd2.9.5.dylib").resolve()
+if not vendor.exists():
+    raise SystemExit(0)
+
+site_packages = Path(site.getsitepackages()[0])
+target_dir = site_packages / "tkinterdnd2" / "tkdnd" / "osx-arm64"
+if not target_dir.exists():
+    raise SystemExit(0)
+
+target = target_dir / vendor.name
+shutil.copy2(vendor, target)
+
+legacy = target_dir / "libtkdnd2.9.3.dylib"
+if legacy.exists():
+    legacy.rename(target_dir / "libtkdnd2.9.3.dylib.bak")
+PY
 
 echo "启动 GUI..."
 python gui_app.py

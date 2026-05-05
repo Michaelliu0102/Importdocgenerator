@@ -7,6 +7,10 @@
 import threading
 import subprocess
 import re
+import os
+import platform
+import sys
+import types
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -15,9 +19,133 @@ from main import CustomsDocGenerator
 
 APP_VERSION = "v4.4"
 
+
+def _install_tix_stub():
+    """Python 3.14 removed tkinter.tix; tkinterdnd2 still imports it."""
+    if "tkinter.tix" in sys.modules:
+        return
+    stub = types.ModuleType("tkinter.tix")
+    stub.Tk = tk.Tk
+    sys.modules["tkinter.tix"] = stub
+    setattr(tk, "tix", stub)
+
+
+def _patch_tkinterdnd2_require(module):
+    """Handle Python 3.14/tk 9 and macOS symbol-case quirks for tkdnd."""
+    if getattr(module, "_custom_require_patched", False):
+        return
+
+    def _platform_dir() -> str:
+        system = platform.system()
+        machine = (
+            os.environ.get("PROCESSOR_ARCHITECTURE", platform.machine())
+            if system == "Windows"
+            else platform.machine()
+        )
+        if system == "Darwin" and machine == "arm64":
+            return "osx-arm64"
+        if system == "Darwin" and machine == "x86_64":
+            return "osx-x64"
+        if system == "Linux" and machine == "aarch64":
+            return "linux-arm64"
+        if system == "Linux" and machine == "x86_64":
+            return "linux-x64"
+        if system == "Windows" and machine == "ARM64":
+            return "win-arm64"
+        if system == "Windows" and machine == "AMD64":
+            return "win-x64"
+        if system == "Windows" and machine == "x86":
+            return "win-x86"
+        raise RuntimeError("Platform not supported for tkdnd.")
+
+    def _require(tkroot):
+        module_path = (
+            Path(module.__file__).resolve().parent / "tkdnd" / _platform_dir()
+        )
+        tkroot.tk.call("lappend", "auto_path", str(module_path))
+        preferred_lib = next(
+            (p.name for p in module_path.glob("libtcl9tkdnd*.dylib")),
+            None,
+        )
+        if preferred_lib and tk.TkVersion >= 9.0:
+            tkroot.tk.call("source", str(module_path / "tkdnd.tcl"))
+            tkroot.tk.call(
+                "tkdnd::initialise",
+                str(module_path),
+                preferred_lib,
+                "Tkdnd",
+            )
+            version = "2.9.5"
+            try:
+                version = tkroot.tk.call("package", "provide", "tkdnd")
+            except tk.TclError:
+                pass
+            if not version:
+                version = "2.9.5"
+                tkroot.tk.call("package", "provide", "tkdnd", version)
+            module.TkdndVersion = version
+            return version
+
+        try:
+            version = tkroot.tk.call("package", "require", "tkdnd")
+            module.TkdndVersion = version
+            return version
+        except tk.TclError as exc:
+            if platform.system() != "Darwin" or "tkdnd_Init" not in str(exc):
+                raise RuntimeError("Unable to load tkdnd library.") from exc
+
+        lib_name = next(
+            (
+                p.name
+                for pattern in ("libtcl9tkdnd*.dylib", "libtkdnd*.dylib")
+                for p in module_path.glob(pattern)
+            ),
+            None,
+        )
+        if not lib_name:
+            raise RuntimeError("Unable to load tkdnd library.")
+
+        tkroot.tk.call("source", str(module_path / "tkdnd.tcl"))
+        tkroot.tk.call(
+            "tkdnd::initialise",
+            str(module_path),
+            lib_name,
+            "Tkdnd",
+        )
+        version = "2.9.3"
+        try:
+            version = tkroot.tk.call("package", "provide", "tkdnd")
+        except tk.TclError:
+            pass
+        if not version:
+            version = "2.9.3"
+            tkroot.tk.call("package", "provide", "tkdnd", version)
+        module.TkdndVersion = version
+        return version
+
+    module._require = _require
+    module._custom_require_patched = True
+
+
 try:
     from tkinterdnd2 import TkinterDnD, DND_FILES
+    _patch_tkinterdnd2_require(TkinterDnD)
     TKINTERDND2_IMPORTED = True
+except ImportError as exc:
+    if "tix" in str(exc).lower():
+        try:
+            _install_tix_stub()
+            from tkinterdnd2 import TkinterDnD, DND_FILES
+            _patch_tkinterdnd2_require(TkinterDnD)
+            TKINTERDND2_IMPORTED = True
+        except Exception:
+            TkinterDnD = None
+            DND_FILES = None
+            TKINTERDND2_IMPORTED = False
+    else:
+        TkinterDnD = None
+        DND_FILES = None
+        TKINTERDND2_IMPORTED = False
 except Exception:
     TkinterDnD = None
     DND_FILES = None
@@ -25,6 +153,7 @@ except Exception:
 
 # Set True in main() only if TkinterDnD.Tk() initializes (matches this Tk build).
 HAS_DND = False
+DND_INIT_ERROR = ""
 
 BG            = "#f0f4f8"
 DROP_BG_IMPORT = "#d4e6ff"
@@ -396,9 +525,10 @@ class CustomsDocGUI:
             self._set_status(
                 "拖拽已启用。左栏进口、右栏出口；或点击「添加…文件」。")
         elif TKINTERDND2_IMPORTED:
+            detail = f"；原因：{DND_INIT_ERROR}" if DND_INIT_ERROR else ""
             self._set_status(
                 "请点击「添加…文件」导入 PDF。"
-                "（已安装 tkinterdnd2，但 tkdnd 与当前 Tk 不兼容，拖拽不可用）")
+                f"（已安装 tkinterdnd2，但 tkdnd 与当前 Tk 不兼容，拖拽不可用{detail}）")
         else:
             self._set_status(
                 "请点击「添加…文件」导入 PDF。"
@@ -919,14 +1049,15 @@ class CustomsDocGUI:
 
 
 def main():
-    global HAS_DND
+    global HAS_DND, DND_INIT_ERROR
     root = None
     if TKINTERDND2_IMPORTED:
         try:
             root = TkinterDnD.Tk()
             HAS_DND = True
-        except Exception:
+        except Exception as exc:
             HAS_DND = False
+            DND_INIT_ERROR = str(exc)
             root = None
     if root is None:
         root = tk.Tk()
