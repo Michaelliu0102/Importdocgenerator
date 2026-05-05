@@ -23,6 +23,9 @@ from pdf_parser import (
     strip_ship_to_leaked_japan_from_camari_address,
 )
 
+CAMARI_BUYER_NAME = "CAMARI TRADING (ZHEJIANG) CO., LTD"
+CAMARI_BUYER_ADDRESS = "1525 Hexing Rd, Jiaxing, Zhejiang, 314001, China"
+
 
 # 含半角 ¥ (U+00A5) 与全角 ￥ (U+FFE5)，PDF 常混用
 _CURRENCY_OR_AMOUNT = re.compile(
@@ -239,25 +242,18 @@ class ExcelFiller:
         payment = invoice_data.get("payment_cond") or supplier_info.get("payment_term", "")
         is_camari_cust = invoice_data.get("format") == "camari_cust"
 
-        # Header block：CustInvc 内销发票 = 卖方嘉兴 + Bill To 买方（含国家）
-        if is_camari_cust and invoice_data.get("buyer_name"):
-            ws.cell(row=4, column=3).value = (
+        # Header block：CustInvc 内销发票 = 卖方 issuer（日本/境外）+ Bill To 买方（嘉兴）
+        if is_camari_cust:
+            # Row 4 = Buyer (固定), Row 7 = Seller (PDF issuer)
+            ws.cell(row=4, column=3).value = CAMARI_BUYER_NAME
+            ws.cell(row=5, column=3).value = CAMARI_BUYER_ADDRESS
+            ws.cell(row=7, column=3).value = (
                 invoice_data.get("issuer_name")
-                or "CAMARI TRADING (ZHEJIANG) CO., LTD"
+                or "CAMARI INTERNATIONAL JAPAN"
             )
-            ws.cell(row=5, column=3).value = invoice_data.get("issuer_address") or ""
-            ws.cell(row=7, column=3).value = strip_camari_bill_to_name_suffix(
-                invoice_data.get("buyer_name") or ""
-            )
-            ws.cell(row=8, column=3).value = (
-                strip_ship_to_leaked_japan_from_camari_address(
-                    _dedupe_party_field(
-                        (invoice_data.get("buyer_address") or "").strip()
-                    )
-                )
-            )
+            ws.cell(row=8, column=3).value = invoice_data.get("issuer_address") or ""
         else:
-            ws.cell(row=4, column=3).value = "CAMARI TRADING (ZHEJIANG) CO., LTD"
+            ws.cell(row=4, column=3).value = CAMARI_BUYER_NAME
             ws.cell(row=7, column=3).value = supplier_name
             ws.cell(row=8, column=3).value = supplier_addr
         ws.cell(row=4, column=10).value = invoice_no
@@ -549,12 +545,8 @@ class ExcelFiller:
 
         p = party_invoice_data if party_invoice_data is not None else invoice_data
         items = invoice_data.get("items", [])
-        buyer = strip_camari_bill_to_name_suffix(
-            _dedupe_party_field((p.get("buyer_name") or "").strip())
-        )
-        buyer_addr = strip_ship_to_leaked_japan_from_camari_address(
-            _dedupe_party_field((p.get("buyer_address") or "").strip())
-        )
+        buyer = CAMARI_BUYER_NAME
+        buyer_addr = CAMARI_BUYER_ADDRESS
         issuer_name = _dedupe_party_field((p.get("issuer_name") or "").strip())
         issuer_addr = _dedupe_party_field((p.get("issuer_address") or "").strip())
         invoice_no = _effective_invoice_no(p)
@@ -657,12 +649,8 @@ class ExcelFiller:
             product_info_map = {}
 
         p = party_invoice_data if party_invoice_data is not None else invoice_data
-        buyer = strip_camari_bill_to_name_suffix(
-            _dedupe_party_field((p.get("buyer_name") or "").strip())
-        )
-        buyer_addr = strip_ship_to_leaked_japan_from_camari_address(
-            _dedupe_party_field((p.get("buyer_address") or "").strip())
-        )
+        buyer = CAMARI_BUYER_NAME
+        buyer_addr = CAMARI_BUYER_ADDRESS
         block = "境外收货人\n"
         if buyer:
             block += buyer

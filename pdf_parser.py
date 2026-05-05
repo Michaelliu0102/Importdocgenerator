@@ -48,6 +48,33 @@ def _camari_invoice_no_after_hash(raw: str) -> str:
     return d
 
 
+def _clean_issuer_line(line: str) -> str:
+    """Remove invoice number and address fragments from issuer company name line.
+
+    'CAMARI INTERNATIONAL JAPAN  #33027Room 107, Sendagaya 3-8-11' → 'CAMARI INTERNATIONAL JAPAN'
+    """
+    s = (line or "").strip()
+    # Truncate at '#<digits>' (invoice number) if present
+    m = re.match(r"^(.+?)\s+#\d", s)
+    if m:
+        return m.group(1).strip()
+    return s
+
+
+def _clean_issuer_addr(addr_lines: list) -> str:
+    """Clean issuer address lines: remove trailing dates and empty lines."""
+    cleaned = []
+    for ln in addr_lines:
+        ln = (ln or "").strip()
+        if not ln:
+            continue
+        # Remove trailing date like '21/4/2026'
+        ln = re.sub(r"\s+\d{1,2}/\d{1,2}/\d{4}\s*$", "", ln).strip()
+        if ln:
+            cleaned.append(ln)
+    return "\n".join(cleaned)
+
+
 def strip_camari_bill_to_name_suffix(name: str) -> str:
     """Bill To 首行常被抽成「公司名 - Tokyo」：Tokyo 来自 Ship To 列，与公司名拼在同一行，应从抬头去掉。"""
     name = (name or "").strip()
@@ -55,6 +82,7 @@ def strip_camari_bill_to_name_suffix(name: str) -> str:
         return ""
     parts = name.split("\n", 1)
     first = parts[0]
+    # "Company - Tokyo" or "Company - Osaka" etc.
     m = re.match(
         r"^(.+?)\s*[-–]\s*("
         r"Tokyo|Osaka|Nagoya|Kyoto|Fukuoka|Yokohama|Kobe|Sapporo|Sendai|Hiroshima"
@@ -64,6 +92,10 @@ def strip_camari_bill_to_name_suffix(name: str) -> str:
     )
     if m:
         first = m.group(1).strip()
+    # "Company     China - Jiaxing" (Ship To column leak with country prefix)
+    first = re.sub(
+        r"\s{2,}China\s*[-–]\s*\w+\s*$", "", first, flags=re.IGNORECASE
+    ).strip()
     if len(parts) == 1:
         return first
     return first + "\n" + parts[1]
@@ -427,15 +459,25 @@ class InvoiceParser:
         return None, None
 
     def _extract_camari_cust_issuer(self):
-        """Seller block: lines immediately above the first standalone 'Invoice' title line."""
+        """Seller block: lines immediately above the first standalone 'Invoice' title line.
+        If Invoice is the first line, fall back to lines below it."""
         lines = self.raw_text.splitlines()
         for i, line in enumerate(lines):
             if line.strip() == "Invoice":
                 start = max(0, i - 4)
                 block = [lines[j].strip() for j in range(start, i) if lines[j].strip()]
-                if not block:
-                    return None, ""
-                return block[0], "\n".join(block[1:])
+                if block:
+                    return _clean_issuer_line(block[0]), _clean_issuer_addr(block[1:])
+                # Invoice is the first line — seller info is below it
+                below = []
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    ln = lines[j].strip()
+                    if not ln or re.match(r"^\d{1,2}/\d{1,2}/\d{4}", ln):
+                        break
+                    below.append(ln)
+                if below:
+                    return _clean_issuer_line(below[0]), _clean_issuer_addr(below[1:])
+                return None, ""
         return None, ""
 
     def _extract_camari_cust_bill_to(self):
@@ -1622,7 +1664,10 @@ class InvoiceParser:
             if pm:
                 return pm.group(1).strip()
 
-        # DECA: "100% TT IN ADVANCE" (may span two lines)
+        # DECA / camari_cust: "100% TT IN ADVANCE" (may span two lines with other fields between)
+        m = re.search(r"(\d+%\s*TT\s+IN)\b.*\n.*\b(ADVANCE)\b", self.raw_text, re.IGNORECASE)
+        if m:
+            return f"{m.group(1)} {m.group(2)}"
         m = re.search(r"(\d+%\s*TT\s+IN\s*\n?\s*ADVANCE)", self.raw_text, re.IGNORECASE)
         if m:
             return re.sub(r"\s+", " ", m.group(1)).strip()
