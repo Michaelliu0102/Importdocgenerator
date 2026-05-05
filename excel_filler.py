@@ -150,11 +150,19 @@ def _resolved_invoice_seller(
 
 
 def _resolved_invoice_buyer(invoice_data: Dict[str, Any]) -> tuple[str, str]:
-    """出口合同买方：取发票中的收货/买方信息。"""
+    """出口单据对方主体：优先取境外 buyer；若 buyer 解析成国内 CAMARI，则回退到顶部 issuer。"""
     buyer_name = _dedupe_party_field((invoice_data.get("buyer_name") or "").strip())
     buyer_addr = _dedupe_party_field(
         (invoice_data.get("buyer_address") or "").strip()
     )
+    issuer_name = _dedupe_party_field((invoice_data.get("issuer_name") or "").strip())
+    issuer_addr = _dedupe_party_field(
+        (invoice_data.get("issuer_address") or "").strip()
+    )
+    if _is_domestic_party(buyer_name, buyer_addr) and (
+        issuer_name or issuer_addr
+    ):
+        return issuer_name, issuer_addr
     return buyer_name, buyer_addr
 
 
@@ -164,15 +172,62 @@ def _effective_invoice_no(party: Dict[str, Any]) -> str:
 
 
 def _buyer_country_last_line(invoice_data: Dict[str, Any]) -> str:
-    """Bill To 地址中用于贸易国的行：自末行向上取首条非空清洗后的文本（通常为英文国家名）。"""
-    ba = (invoice_data.get("buyer_address") or "").strip()
+    """出口对方地址中用于贸易国的行：自末行向上取首条可识别国家名。"""
+    _buyer, ba = _resolved_invoice_buyer(invoice_data)
     if not ba:
         return ""
     for line in reversed([ln.strip() for ln in ba.split("\n") if ln.strip()]):
-        cleaned = _clean_address_line(line)
+        country = _extract_country_name(line)
+        if country:
+            return country
+        cleaned = _clean_country_line(line)
         if cleaned:
             return cleaned
     return ""
+
+
+def _clean_country_line(line: str) -> str:
+    s = _clean_address_line(line)
+    if not s:
+        return ""
+    s = re.sub(r"\s+\d[\d.,]*\s*$", "", s).strip()
+    return s
+
+
+def _extract_country_name(text: str) -> str:
+    s = _clean_country_line(text)
+    if not s:
+        return ""
+    known = [
+        "Japan",
+        "China",
+        "Korea",
+        "USA",
+        "United States",
+        "Germany",
+        "Italy",
+        "France",
+        "UK",
+        "United Kingdom",
+        "Netherlands",
+    ]
+    for name in known:
+        if re.search(rf"\b{re.escape(name)}\b", s, re.IGNORECASE):
+            return name
+    return ""
+
+
+def _is_domestic_party(name: str, addr: str) -> bool:
+    probe = f"{name}\n{addr}".lower()
+    return any(
+        token in probe
+        for token in (
+            "camari trading (zhejiang)",
+            "zhejiang",
+            "jiaxing",
+            "china",
+        )
+    )
 
 
 def _find_cell_contains(ws, text: str):
@@ -650,8 +705,7 @@ class ExcelFiller:
             product_info_map = {}
 
         p = party_invoice_data if party_invoice_data is not None else invoice_data
-        buyer = CAMARI_BUYER_NAME
-        buyer_addr = CAMARI_BUYER_ADDRESS
+        buyer, buyer_addr = _resolved_invoice_buyer(p)
         block = "境外收货人\n"
         if buyer:
             block += buyer
