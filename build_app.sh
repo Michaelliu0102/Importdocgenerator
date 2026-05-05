@@ -40,12 +40,12 @@ PY
 pyinstaller \
   --noconfirm \
   --windowed \
-  --name "报关资料生成器" \
+  --name "ClearanceOS" \
   --add-data "templates:templates" \
   --add-data "export_templates:export_templates" \
   --add-data "data:data" \
   gui_app.py
 
 echo
-echo "打包完成: dist/报关资料生成器.app"
+echo "打包完成: dist/ClearanceOS.app"
 echo "使用环境: $(pwd)/.venv"

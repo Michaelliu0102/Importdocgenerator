@@ -1,6 +1,6 @@
 # macOS Intel 打包说明
 
-这份源码包用于在 Intel 芯片 Mac 上生成对应的 `报关资料生成器.app`。
+这份源码包用于在 Intel 芯片 Mac 上生成对应的 `ClearanceOS.app`。
 
 ## 前置条件
 
@@ -21,14 +21,14 @@ chmod +x build_app.sh
 4. 生成文件位于：
 
 ```text
-dist/报关资料生成器.app
+dist/ClearanceOS.app
 ```
 
 把这个 `.app` 发给 Intel Mac 员工即可。
 
 ## 首次打开
 
-如果 macOS 提示无法打开，右键 `报关资料生成器.app`，选择“打开”，再确认一次。
+如果 macOS 提示无法打开，右键 `ClearanceOS.app`，选择“打开”，再确认一次。
 
 ## 更新模板
 

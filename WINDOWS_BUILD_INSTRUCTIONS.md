@@ -1,6 +1,6 @@
 # Windows 打包说明
 
-在 Windows 电脑上执行一次即可生成 `报关资料生成器.exe`。
+在 Windows 电脑上执行一次即可生成 `ClearanceOS.exe`。
 
 ## 前置条件
 
@@ -15,10 +15,10 @@
 4. 生成文件位于：
 
 ```text
-dist\报关资料生成器\报关资料生成器.exe
+dist\ClearanceOS\ClearanceOS.exe
 ```
 
-把整个 `dist\报关资料生成器` 文件夹发给 Windows 员工，不要只发单个 exe，因为 `_internal` 目录里包含运行依赖、模板和配置文件。
+把整个 `dist\ClearanceOS` 文件夹发给 Windows 员工，不要只发单个 exe，因为 `_internal` 目录里包含运行依赖、模板和配置文件。
 
 ## 更新模板
 

@@ -24,7 +24,7 @@ from pdf_parser import (
 )
 
 CAMARI_BUYER_NAME = "CAMARI TRADING (ZHEJIANG) CO., LTD"
-CAMARI_BUYER_ADDRESS = "1525 Hexing Rd, Jiaxing, Zhejiang, 314001, China"
+CAMARI_BUYER_ADDRESS = "1525 HEXING RD, JIAXING, 314001 CHINA"
 
 
 # 含半角 ¥ (U+00A5) 与全角 ￥ (U+FFE5)，PDF 常混用
@@ -133,6 +133,31 @@ def _dedupe_party_field(s: str) -> str:
     return "\n".join(lines)
 
 
+def _resolved_invoice_seller(
+    invoice_data: Dict[str, Any],
+    supplier_info: Dict[str, Any],
+) -> tuple[str, str]:
+    """进口合同卖方：优先取发票解析结果，缺失时回退到供应商配置。"""
+    seller_name = _dedupe_party_field(
+        (invoice_data.get("issuer_name") or "").strip()
+    ) or _dedupe_party_field((invoice_data.get("supplier_name") or "").strip())
+    seller_addr = _dedupe_party_field(
+        (invoice_data.get("issuer_address") or "").strip()
+    ) or _dedupe_party_field((supplier_info.get("address") or "").strip())
+    if not seller_name:
+        seller_name = _dedupe_party_field((supplier_info.get("name") or "").strip())
+    return seller_name, seller_addr
+
+
+def _resolved_invoice_buyer(invoice_data: Dict[str, Any]) -> tuple[str, str]:
+    """出口合同买方：取发票中的收货/买方信息。"""
+    buyer_name = _dedupe_party_field((invoice_data.get("buyer_name") or "").strip())
+    buyer_addr = _dedupe_party_field(
+        (invoice_data.get("buyer_address") or "").strip()
+    )
+    return buyer_name, buyer_addr
+
+
 def _effective_invoice_no(party: Dict[str, Any]) -> str:
     """合同号 / 发票号：仅使用发票解析的 invoice_no（不用装箱单号）。"""
     return (party.get("invoice_no") or "").strip()
@@ -158,8 +183,6 @@ def _find_cell_contains(ws, text: str):
             if cell.value and t in str(cell.value).lower():
                 return cell
     return None
-
-
 def _unit_to_english(unit: str) -> str:
     mapping = {
         "米": "M",
@@ -233,29 +256,20 @@ class ExcelFiller:
     ):
         """填充新版排版合同模板 CONTRACT_CAMARI_PRETTY.xlsx。"""
         items = invoice_data.get("items", [])
-        supplier_name = supplier_info.get("name", invoice_data.get("supplier_name", ""))
-        supplier_addr = supplier_info.get("address", "")
+        seller_name, seller_addr = _resolved_invoice_seller(
+            invoice_data, supplier_info
+        )
         trade_term = invoice_data.get("trade_term") or supplier_info.get("trade_term", "")
         currency = invoice_data.get("currency", "EUR") or "EUR"
         invoice_no = invoice_data.get("invoice_no", "")
         invoice_date = invoice_data.get("invoice_date", "")
         payment = invoice_data.get("payment_cond") or supplier_info.get("payment_term", "")
-        is_camari_cust = invoice_data.get("format") == "camari_cust"
 
-        # Header block：CustInvc 内销发票 = 卖方 issuer（日本/境外）+ Bill To 买方（嘉兴）
-        if is_camari_cust:
-            # Row 4 = Buyer (固定), Row 7 = Seller (PDF issuer)
-            ws.cell(row=4, column=3).value = CAMARI_BUYER_NAME
-            ws.cell(row=5, column=3).value = CAMARI_BUYER_ADDRESS
-            ws.cell(row=7, column=3).value = (
-                invoice_data.get("issuer_name")
-                or "CAMARI INTERNATIONAL JAPAN"
-            )
-            ws.cell(row=8, column=3).value = invoice_data.get("issuer_address") or ""
-        else:
-            ws.cell(row=4, column=3).value = CAMARI_BUYER_NAME
-            ws.cell(row=7, column=3).value = supplier_name
-            ws.cell(row=8, column=3).value = supplier_addr
+        # 进口合同：Buyer 固定 CAMARI；Seller 来自发票解析。
+        ws.cell(row=4, column=3).value = CAMARI_BUYER_NAME
+        ws.cell(row=5, column=3).value = CAMARI_BUYER_ADDRESS
+        ws.cell(row=7, column=3).value = seller_name
+        ws.cell(row=8, column=3).value = seller_addr
         ws.cell(row=4, column=10).value = invoice_no
         ws.cell(row=5, column=10).value = invoice_date
         # 第10行已改为只保留 Incoterms / Payment Terms（无 Country / Currency）
@@ -317,7 +331,9 @@ class ExcelFiller:
         """兼容旧版 CONTRACT.xlsx 的填充逻辑。"""
 
         items = invoice_data.get("items", [])
-        supplier_name = supplier_info.get("name", invoice_data.get("supplier_name", ""))
+        seller_name, _seller_addr = _resolved_invoice_seller(
+            invoice_data, supplier_info
+        )
         trade_term = invoice_data.get("trade_term") or supplier_info.get("trade_term", "")
         currency = invoice_data.get("currency", "EUR") or "EUR"
         invoice_no = invoice_data.get("invoice_no", "")
@@ -330,7 +346,7 @@ class ExcelFiller:
         # 合同编号 = Invoice number
         ws.cell(row=5, column=11).value = invoice_no
 
-        ws.cell(row=7, column=3).value = supplier_name
+        ws.cell(row=7, column=3).value = seller_name
         ws.cell(row=7, column=11).value = invoice_date
 
         # 第12行：货币 / Incoterms / Payment（CAMARI 模板）
@@ -545,10 +561,7 @@ class ExcelFiller:
 
         p = party_invoice_data if party_invoice_data is not None else invoice_data
         items = invoice_data.get("items", [])
-        buyer = CAMARI_BUYER_NAME
-        buyer_addr = CAMARI_BUYER_ADDRESS
-        issuer_name = _dedupe_party_field((p.get("issuer_name") or "").strip())
-        issuer_addr = _dedupe_party_field((p.get("issuer_address") or "").strip())
+        buyer, buyer_addr = _resolved_invoice_buyer(p)
         invoice_no = _effective_invoice_no(p)
         invoice_date = (p.get("invoice_date") or "").strip()
         trade_term = invoice_data.get("trade_term") or (
@@ -561,24 +574,12 @@ class ExcelFiller:
 
         ws["C4"] = buyer
         ws["C5"] = buyer_addr
+        ws["C7"] = CAMARI_BUYER_NAME
+        ws["C8"] = CAMARI_BUYER_ADDRESS
         ws["J4"] = invoice_no
         ws["J5"] = invoice_date
         ws["C10"] = trade_term
         ws["G10"] = payment
-        # 卖方（原发票 issuer；若模板 C2/C3 为占位或空则写入）
-        if issuer_name or issuer_addr:
-            for r, val in ((2, issuer_name), (3, issuer_addr)):
-                if not val:
-                    continue
-                cur = ws.cell(row=r, column=3).value
-                if cur is None or str(cur).strip() == "":
-                    ws.cell(row=r, column=3).value = val
-            lab = _find_cell_contains(ws, "卖方")
-            if lab and issuer_name and "买方" not in str(lab.value or ""):
-                ws.cell(row=lab.row, column=lab.column + 1).value = issuer_name
-            lab_addr = _find_cell_contains(ws, "卖方地址")
-            if lab_addr and issuer_addr:
-                ws.cell(row=lab_addr.row, column=lab_addr.column + 1).value = issuer_addr
 
         for i, item in enumerate(items[:12], 1):
             r = 12 + i

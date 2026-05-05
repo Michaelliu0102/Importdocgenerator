@@ -1,4 +1,4 @@
-"""报关资料生成器 - 图形界面.
+"""ClearanceOS - 图形界面.
 
 需要 Python + Tk 8.6+（推荐 Tk 9.0）。
 使用 run_gui.sh 或 run_gui.command 启动。
@@ -17,7 +17,8 @@ from tkinter import filedialog, messagebox
 
 from main import CustomsDocGenerator
 
-APP_VERSION = "v4.4"
+APP_NAME = "ClearanceOS"
+APP_VERSION = "v4.5"
 
 
 def _install_tix_stub():
@@ -155,23 +156,28 @@ except Exception:
 HAS_DND = False
 DND_INIT_ERROR = ""
 
-BG            = "#f0f4f8"
-DROP_BG_IMPORT = "#d4e6ff"
-DROP_BG_EXPORT = "#d8f0e0"
-DROP_BD_IMPORT = "#5599dd"
-DROP_BD_EXPORT = "#44aa77"
+BG            = "#eef2f6"
+PANEL_BG      = "#fbfcfd"
+PANEL_ALT_BG  = "#f6f8fa"
+BORDER        = "#cfd7e2"
+DROP_BG_IMPORT = "#e8f1ff"
+DROP_BG_EXPORT = "#eaf5ee"
+DROP_BD_IMPORT = "#6e9bd4"
+DROP_BD_EXPORT = "#78a887"
 LIST_BG       = "#ffffff"
-STAT_BG       = "#fffde6"
-ACCENT        = "#2060b0"
-BTN_GRAY      = "#aaaaaa"
-FG            = "#1a1a1a"
-FG_DIM        = "#666666"
+STAT_BG       = "#fff9df"
+ACCENT        = "#1764c8"
+BTN_GRAY      = "#b8c0ca"
+SECONDARY_BTN_BG = "#eef1f5"
+FG            = "#1d2430"
+FG_DIM        = "#657080"
+FG_MUTED      = "#87909c"
 
 
 class CustomsDocGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"报关资料生成器 {APP_VERSION}")
+        self.root.title(f"{APP_NAME} {APP_VERSION}")
         self.root.geometry("1100x900")
         self.root.minsize(960, 720)
         self.root.configure(bg=BG)
@@ -196,241 +202,270 @@ class CustomsDocGUI:
         self._build_ui()
 
     def _build_ui(self):
-        outer = tk.Frame(self.root, bg=BG, padx=18, pady=14)
+        outer = tk.Frame(self.root, bg=BG, padx=20, pady=16)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(1, weight=1)
 
-        row = 0
-
+        header = tk.Frame(outer, bg=BG)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        header.columnconfigure(0, weight=1)
         tk.Label(
-            outer,
-            text=f"进口 / 出口 报关资料生成   {APP_VERSION}",
-            font=("Helvetica", 17, "bold"),
+            header,
+            text=f"{APP_NAME} {APP_VERSION}",
+            font=("Helvetica", 19, "bold"),
             fg=FG, bg=BG, anchor="w",
-        ).grid(row=row, column=0, sticky="ew", pady=(0, 6))
-        row += 1
+        ).grid(row=0, column=0, sticky="w")
+        tk.Label(
+            header,
+            text="导入进口或出口 PDF，确认输出目录后生成。EUR Invoice PDF 在右下角单独处理。",
+            font=("Helvetica", 11),
+            fg=FG_DIM, bg=BG, anchor="w",
+        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
 
-        # ── 双栏：进口 | 出口 ─────────────────────────────────
         dual = tk.Frame(outer, bg=BG)
-        dual.grid(row=row, column=0, sticky="nsew", pady=(0, 8))
+        dual.grid(row=1, column=0, sticky="nsew")
         dual.columnconfigure(0, weight=1)
         dual.columnconfigure(1, weight=1)
-        dual.rowconfigure(1, weight=1)
-        row += 1
+        dual.rowconfigure(0, weight=1)
 
-        tk.Label(
-            dual, text="进口资料（Invoice PDF）",
-            font=("Helvetica", 11, "bold"), fg=FG, bg=BG, anchor="w",
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        tk.Label(
-            dual, text="出口资料（发票/装箱单等，PDF）",
-            font=("Helvetica", 11, "bold"), fg=FG, bg=BG, anchor="w",
-        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        def file_panel(parent, title, subtitle, drop_bg, drop_bd, main_text,
+                       choose_text, choose_cmd, remove_cmd, clear_cmd):
+            shell = tk.Frame(parent, bg=BORDER, padx=1, pady=1)
+            inner = tk.Frame(shell, bg=PANEL_BG, padx=12, pady=11)
+            inner.pack(fill="both", expand=True)
+            inner.columnconfigure(0, weight=1)
+            inner.rowconfigure(4, weight=1)
 
-        left = tk.Frame(dual, bg=BG)
-        left.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
-        left.columnconfigure(0, weight=1)
-        left.rowconfigure(2, weight=1)
+            tk.Label(
+                inner,
+                text=title,
+                font=("Helvetica", 12, "bold"),
+                fg=FG, bg=PANEL_BG, anchor="w",
+            ).grid(row=0, column=0, sticky="ew")
+            tk.Label(
+                inner,
+                text=subtitle,
+                font=("Helvetica", 10),
+                fg=FG_DIM, bg=PANEL_BG, anchor="w",
+            ).grid(row=1, column=0, sticky="ew", pady=(2, 8))
 
-        right = tk.Frame(dual, bg=BG)
-        right.grid(row=1, column=1, sticky="nsew", padx=(6, 0))
-        right.columnconfigure(0, weight=1)
-        right.rowconfigure(2, weight=1)
+            drop_zone = tk.Canvas(
+                inner, height=82, bg=drop_bg,
+                highlightthickness=1, highlightbackground=drop_bd,
+                cursor="hand2",
+            )
+            drop_zone.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+            self._bind_drop_redraw(drop_zone, main_text)
 
-        self.drop_zone_import = tk.Canvas(
-            left, height=88, bg=DROP_BG_IMPORT,
-            highlightthickness=2, highlightbackground=DROP_BD_IMPORT,
-            cursor="hand2",
+            tools = tk.Frame(inner, bg=PANEL_BG)
+            tools.grid(row=3, column=0, sticky="ew", pady=(0, 8))
+            tk.Button(tools, text=choose_text, command=choose_cmd).pack(side="left")
+            tk.Button(tools, text="移除选中", command=remove_cmd).pack(
+                side="left", padx=(8, 0)
+            )
+            tk.Button(tools, text="清空列表", command=clear_cmd).pack(
+                side="left", padx=(8, 0)
+            )
+
+            list_wrap = tk.Frame(inner, bg=BORDER, padx=1, pady=1)
+            list_wrap.grid(row=4, column=0, sticky="nsew")
+            list_wrap.columnconfigure(0, weight=1)
+            list_wrap.rowconfigure(0, weight=1)
+            listbox = tk.Listbox(
+                list_wrap, selectmode="extended", height=7,
+                font=("Helvetica", 11),
+                bg=LIST_BG, fg=FG,
+                selectbackground=ACCENT, selectforeground="white",
+                bd=0, relief="flat",
+            )
+            listbox.grid(row=0, column=0, sticky="nsew")
+            scroll = tk.Scrollbar(list_wrap, orient="vertical", command=listbox.yview)
+            scroll.grid(row=0, column=1, sticky="ns")
+            listbox.config(yscrollcommand=scroll.set)
+            return shell, drop_zone, listbox
+
+        left, self.drop_zone_import, self.file_listbox_import = file_panel(
+            dual,
+            "进口资料",
+            "Invoice PDF，可拖入单个文件或文件夹。",
+            DROP_BG_IMPORT,
+            DROP_BD_IMPORT,
+            "拖入进口 PDF / 文件夹",
+            "添加进口 PDF...",
+            self._choose_import_files,
+            self._remove_selected_import,
+            self._clear_import,
         )
-        self.drop_zone_import.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        self._bind_drop_redraw(
-            self.drop_zone_import,
-            "将进口 PDF / 文件夹拖到此区域",
-        )
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
-        imp_btns = tk.Frame(left, bg=BG)
-        imp_btns.grid(row=1, column=0, sticky="ew", pady=(0, 4))
-        tk.Button(
-            imp_btns, text="添加进口文件...",
-            command=self._choose_import_files,
-        ).pack(side="left")
-        tk.Button(
-            imp_btns, text="移除选中",
-            command=self._remove_selected_import,
-        ).pack(side="left", padx=(8, 0))
-        tk.Button(
-            imp_btns, text="清空",
-            command=self._clear_import,
-        ).pack(side="left", padx=(8, 0))
+        right, self.drop_zone_export, self.file_listbox_export = file_panel(
+            dual,
+            "出口资料",
+            "CustInvc 发票与 ItemShip 装箱单 PDF 放在这里。",
+            DROP_BG_EXPORT,
+            DROP_BD_EXPORT,
+            "拖入出口 PDF / 文件夹",
+            "添加出口 PDF...",
+            self._choose_export_files,
+            self._remove_selected_export,
+            self._clear_export,
+        )
+        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
-        limp = tk.Frame(left, bg=BG)
-        limp.grid(row=2, column=0, sticky="nsew")
-        limp.columnconfigure(0, weight=1)
-        limp.rowconfigure(0, weight=1)
-        self.file_listbox_import = tk.Listbox(
-            limp, selectmode="extended", height=6,
-            font=("Helvetica", 11),
-            bg=LIST_BG, fg=FG,
-            selectbackground=ACCENT, selectforeground="white",
-            bd=1, relief="solid",
-        )
-        self.file_listbox_import.grid(row=0, column=0, sticky="nsew")
-        vsb_i = tk.Scrollbar(
-            limp, orient="vertical",
-            command=self.file_listbox_import.yview,
-        )
-        vsb_i.grid(row=0, column=1, sticky="ns")
-        self.file_listbox_import.config(yscrollcommand=vsb_i.set)
         self.file_listbox_import.bind(
-            "<Double-Button-1>",
-            lambda e: self._remove_selected_import(),
+            "<Double-Button-1>", lambda e: self._remove_selected_import()
         )
-
-        self.drop_zone_export = tk.Canvas(
-            right, height=88, bg=DROP_BG_EXPORT,
-            highlightthickness=2, highlightbackground=DROP_BD_EXPORT,
-            cursor="hand2",
-        )
-        self.drop_zone_export.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        self._bind_drop_redraw(
-            self.drop_zone_export,
-            "将出口 PDF / 文件夹拖到此区域",
-        )
-
-        exp_btns = tk.Frame(right, bg=BG)
-        exp_btns.grid(row=1, column=0, sticky="ew", pady=(0, 4))
-        tk.Button(
-            exp_btns, text="添加出口文件...",
-            command=self._choose_export_files,
-        ).pack(side="left")
-        tk.Button(
-            exp_btns, text="移除选中",
-            command=self._remove_selected_export,
-        ).pack(side="left", padx=(8, 0))
-        tk.Button(
-            exp_btns, text="清空",
-            command=self._clear_export,
-        ).pack(side="left", padx=(8, 0))
-
-        lexp = tk.Frame(right, bg=BG)
-        lexp.grid(row=2, column=0, sticky="nsew")
-        lexp.columnconfigure(0, weight=1)
-        lexp.rowconfigure(0, weight=1)
-        self.file_listbox_export = tk.Listbox(
-            lexp, selectmode="extended", height=6,
-            font=("Helvetica", 11),
-            bg=LIST_BG, fg=FG,
-            selectbackground=ACCENT, selectforeground="white",
-            bd=1, relief="solid",
-        )
-        self.file_listbox_export.grid(row=0, column=0, sticky="nsew")
-        vsb_e = tk.Scrollbar(
-            lexp, orient="vertical",
-            command=self.file_listbox_export.yview,
-        )
-        vsb_e.grid(row=0, column=1, sticky="ns")
-        self.file_listbox_export.config(yscrollcommand=vsb_e.set)
         self.file_listbox_export.bind(
-            "<Double-Button-1>",
-            lambda e: self._remove_selected_export(),
+            "<Double-Button-1>", lambda e: self._remove_selected_export()
         )
 
-        # ── 输出目录 ──────────────────────────────────────────
-        out_f = tk.Frame(outer, bg=BG)
-        out_f.grid(row=row, column=0, sticky="ew", pady=4)
-        row += 1
-        tk.Label(out_f, text="输出目录:", fg=FG, bg=BG,
-                 font=("Helvetica", 11), anchor="w").pack(side="left")
+        controls = tk.Frame(outer, bg=BG)
+        controls.grid(row=2, column=0, sticky="ew", pady=(14, 0))
+        controls.columnconfigure(0, weight=3)
+        controls.columnconfigure(1, weight=2)
+
+        main_shell = tk.Frame(controls, bg=BORDER, padx=1, pady=1)
+        main_shell.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        main_f = tk.Frame(main_shell, bg=PANEL_BG, padx=14, pady=12)
+        main_f.pack(fill="both", expand=True)
+        main_f.columnconfigure(1, weight=1)
+
+        tk.Label(
+            main_f, text="主流程", fg=FG, bg=PANEL_BG,
+            font=("Helvetica", 12, "bold"), anchor="w",
+        ).grid(row=0, column=0, columnspan=3, sticky="ew")
+        tk.Label(
+            main_f, text="导入资料后，从这里生成整批报关文件。",
+            fg=FG_DIM, bg=PANEL_BG, font=("Helvetica", 10), anchor="w",
+        ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(2, 10))
+
+        tk.Label(
+            main_f, text="输出目录", fg=FG, bg=PANEL_BG,
+            font=("Helvetica", 11), anchor="w",
+        ).grid(row=2, column=0, sticky="w")
         self.output_dir_entry = tk.Entry(
-            out_f,
+            main_f,
             textvariable=self.output_dir_var,
             fg=FG,
             bg="white",
             font=("Helvetica", 11),
+            relief="solid",
+            bd=1,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
         )
-        self.output_dir_entry.pack(
-            side="left", fill="x", expand=True, padx=(6, 8))
-        tk.Button(out_f, text="选择目录...",
-                  command=self._choose_output_dir).pack(side="left")
+        self.output_dir_entry.grid(row=2, column=1, sticky="ew", padx=(10, 8))
+        tk.Button(
+            main_f, text="选择目录...",
+            command=self._choose_output_dir,
+            width=12,
+        ).grid(row=2, column=2, sticky="e")
 
-        # ── OCR 设置 ──────────────────────────────────────────
-        ocr_f = tk.Frame(outer, bg=BG)
-        ocr_f.grid(row=row, column=0, sticky="ew", pady=4)
-        row += 1
-        tk.Checkbutton(ocr_f, text="自动 OCR（扫描件推荐开启，仅进口解析）",
-                       variable=self.ocr_enabled_var,
-                       bg=BG, fg=FG, activebackground=BG,
-                       font=("Helvetica", 11)).pack(side="left")
-        tk.Label(ocr_f, text="OCR 语言:", fg=FG, bg=BG,
-                 font=("Helvetica", 11)).pack(side="left", padx=(18, 4))
-        tk.Entry(ocr_f, textvariable=self.ocr_lang_var, width=12,
-                 fg=FG, bg="white",
-                 font=("Helvetica", 11)).pack(side="left")
-        tk.Label(ocr_f, text="如: eng / eng+ita",
-                 fg=FG_DIM, bg=BG,
-                 font=("Helvetica", 10)).pack(side="left", padx=(10, 0))
-
-        # ── 出口：是否生成 EUR 版 Invoice PDF ─────────────────
-        eur_pdf_f = tk.Frame(outer, bg=BG)
-        eur_pdf_f.grid(row=row, column=0, sticky="ew", pady=2)
-        row += 1
-        self._eur_invoice_pdf_cb = tk.Checkbutton(
-            eur_pdf_f,
-            text="生成 EUR 版 Invoice PDF（CustInvc_…，在原 PDF 上替换为欧元；未勾选则不生成该 PDF）",
-            command=self._toggle_eur_pdf,
-            bg=BG,
-            fg=FG,
-            activebackground=BG,
+        option_row = tk.Frame(main_f, bg=PANEL_BG)
+        option_row.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 12))
+        tk.Checkbutton(
+            option_row, text="自动 OCR（扫描件推荐开启，仅进口解析）",
+            variable=self.ocr_enabled_var,
+            bg=PANEL_BG, fg=FG, activebackground=PANEL_BG,
             font=("Helvetica", 11),
-        )
-        self._eur_invoice_pdf_cb.pack(side="left", anchor="w")
-
-        # ── 出口 EUR 汇率（可选）──────────────────────────────
-        fx_f = tk.Frame(outer, bg=BG)
-        fx_f.grid(row=row, column=0, sticky="ew", pady=4)
-        row += 1
+        ).pack(side="left")
         tk.Label(
-            fx_f,
-            text="出口 EUR 汇率：1 EUR =",
-            fg=FG, bg=BG,
+            option_row, text="OCR 语言", fg=FG, bg=PANEL_BG,
+            font=("Helvetica", 11),
+        ).pack(side="left", padx=(18, 6))
+        tk.Entry(
+            option_row, textvariable=self.ocr_lang_var, width=10,
+            fg=FG, bg="white", font=("Helvetica", 11),
+            relief="solid", bd=1,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
+        ).pack(side="left")
+        tk.Label(
+            option_row, text="eng / eng+ita",
+            fg=FG_MUTED, bg=PANEL_BG, font=("Helvetica", 10),
+        ).pack(side="left", padx=(8, 0))
+
+        action_row = tk.Frame(main_f, bg=PANEL_BG)
+        action_row.grid(row=4, column=0, columnspan=3, sticky="ew")
+        self._run_btn_enabled = False
+        self.run_btn = tk.Label(
+            action_row, text="开始生成报关资料",
+            font=("Helvetica", 13, "bold"),
+            fg="#e9edf3", bg=BTN_GRAY,
+            padx=28, pady=12,
+            cursor="arrow",
+            relief="raised", bd=1,
+        )
+        self.run_btn.pack(side="left")
+        self.run_btn.bind("<Button-1>", self._on_run_btn_click)
+        self.run_btn.bind(
+            "<ButtonRelease-1>",
+            lambda e: self.run_btn.config(relief="raised"),
+        )
+        tk.Button(
+            action_row, text="在 Finder 中查看输出",
+            command=self._open_output_dir,
+            width=18,
+        ).pack(side="left", padx=(12, 0))
+
+        eur_shell = tk.Frame(controls, bg=BORDER, padx=1, pady=1)
+        eur_shell.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        eur_f = tk.Frame(eur_shell, bg=PANEL_ALT_BG, padx=14, pady=12)
+        eur_f.pack(fill="both", expand=True)
+        eur_f.columnconfigure(1, weight=1)
+
+        tk.Label(
+            eur_f, text="EUR Invoice PDF（单独功能）",
+            fg=FG, bg=PANEL_ALT_BG,
+            font=("Helvetica", 12, "bold"), anchor="w",
+        ).grid(row=0, column=0, columnspan=3, sticky="ew")
+        tk.Label(
+            eur_f, text="选择一张 CustInvc 发票 PDF，按汇率单独生成欧元版。",
+            fg=FG_DIM, bg=PANEL_ALT_BG, font=("Helvetica", 10), anchor="w",
+        ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(2, 10))
+
+        tk.Label(
+            eur_f, text="出口汇率", fg=FG, bg=PANEL_ALT_BG,
+            font=("Helvetica", 11),
+        ).grid(row=2, column=0, sticky="w")
+        fx_row = tk.Frame(eur_f, bg=PANEL_ALT_BG)
+        fx_row.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(10, 0))
+        tk.Label(
+            fx_row, text="1 EUR =", fg=FG, bg=PANEL_ALT_BG,
             font=("Helvetica", 11),
         ).pack(side="left")
         # 保存引用：焦点仍在输入框时点「开始生成」时，StringVar 可能尚未同步，需用 Entry.get()。
         self.fx_entry = tk.Entry(
-            fx_f,
+            fx_row,
             textvariable=self.export_fx_var,
-            width=14,
+            width=12,
             fg=FG,
             bg="white",
             font=("Helvetica", 11),
+            relief="solid",
+            bd=1,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
         )
-        self.fx_entry.pack(side="left", padx=(6, 4))
+        self.fx_entry.pack(side="left", padx=(6, 6))
         tk.Label(
-            fx_f,
-            text="单位发票货币（非 EUR 时填汇率；留空则出口合同/报关单等仍用原币种）",
+            fx_row,
+            text="发票货币",
             fg=FG_DIM,
-            bg=BG,
+            bg=PANEL_ALT_BG,
             font=("Helvetica", 10),
         ).pack(side="left")
 
-        # ── 独立：仅生成 EUR 版 CustInvc PDF ─────────────────
-        eur_only_f = tk.Frame(outer, bg=BG)
-        eur_only_f.grid(row=row, column=0, sticky="ew", pady=(10, 4))
-        row += 1
         tk.Label(
-            eur_only_f,
-            text="EUR Invoice PDF（单独）：上传非 EUR 的 CustInvc 发票 PDF，按上方汇率生成欧元版（≤1MB 尽量压缩）",
-            fg=FG,
-            bg=BG,
-            font=("Helvetica", 11, "bold"),
-            anchor="w",
-        ).pack(anchor="w")
-        eur_only_row = tk.Frame(eur_only_f, bg=BG)
-        eur_only_row.pack(fill="x", pady=(6, 0))
-        eur_only_row.columnconfigure(0, weight=1)
+            eur_f, text="发票 PDF", fg=FG, bg=PANEL_ALT_BG,
+            font=("Helvetica", 11),
+        ).grid(row=3, column=0, sticky="w", pady=(10, 0))
         self.eur_standalone_entry = tk.Entry(
-            eur_only_row,
+            eur_f,
             textvariable=self.eur_standalone_pdf_var,
             fg=FG,
             bg="white",
@@ -439,60 +474,53 @@ class CustomsDocGUI:
             relief="solid",
             bd=1,
             highlightthickness=1,
-            highlightbackground="#cccccc",
+            highlightbackground=BORDER,
             highlightcolor=ACCENT,
         )
-        self.eur_standalone_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.eur_standalone_entry.grid(
+            row=3, column=1, sticky="ew", padx=(10, 8), pady=(10, 0)
+        )
         tk.Button(
-            eur_only_row,
-            text="选择发票 PDF…",
+            eur_f,
+            text="选择...",
             command=self._choose_eur_standalone_pdf,
-            width=14,
-        ).grid(row=0, column=1, sticky="e")
-        # macOS 上 tk.Button 的 bg/fg 常被系统主题覆盖，改用 Label 保证蓝底白字
+            width=8,
+        ).grid(row=3, column=2, sticky="e", pady=(10, 0))
+
+        self._eur_invoice_pdf_cb = tk.Checkbutton(
+            eur_f,
+            text="出口批量生成时也生成 EUR Invoice PDF",
+            command=self._toggle_eur_pdf,
+            bg=PANEL_ALT_BG,
+            fg=FG,
+            activebackground=PANEL_ALT_BG,
+            font=("Helvetica", 10),
+        )
+        self._eur_invoice_pdf_cb.grid(
+            row=4, column=0, columnspan=3, sticky="w", pady=(10, 8)
+        )
+
         self.eur_only_btn = tk.Label(
-            eur_only_f,
-            text="生成 EUR Invoice PDF",
+            eur_f,
+            text="单独生成 EUR Invoice PDF",
             font=("Helvetica", 11, "bold"),
-            fg="white",
-            bg=ACCENT,
-            padx=22,
-            pady=10,
+            fg=FG,
+            bg=SECONDARY_BTN_BG,
+            padx=18,
+            pady=9,
             cursor="hand2",
             relief="raised",
             bd=1,
         )
-        self.eur_only_btn.pack(anchor="w", pady=(8, 0))
+        self.eur_only_btn.grid(row=5, column=0, columnspan=3, sticky="w")
         self.eur_only_btn.bind("<Button-1>", self._on_eur_only_btn_click)
         self.eur_only_btn.bind(
             "<ButtonRelease-1>",
             lambda e: self.eur_only_btn.config(relief="raised"),
         )
 
-        # ── 操作按钮 ──────────────────────────────────────────
-        act_f = tk.Frame(outer, bg=BG)
-        act_f.grid(row=row, column=0, sticky="ew", pady=(12, 4))
-        row += 1
-        self._run_btn_enabled = False
-        self.run_btn = tk.Label(
-            act_f, text="▶  开始生成",
-            font=("Helvetica", 13, "bold"),
-            fg="#dddddd", bg=BTN_GRAY,
-            padx=30, pady=12,
-            cursor="arrow",
-            relief="raised", bd=1,
-        )
-        self.run_btn.pack(side="left")
-        self.run_btn.bind("<Button-1>", self._on_run_btn_click)
-        self.run_btn.bind("<ButtonRelease-1>",
-                          lambda e: self.run_btn.config(relief="raised"))
-        tk.Button(act_f, text="打开输出目录",
-                  command=self._open_output_dir,
-                  width=14).pack(side="left", padx=(12, 0))
-
-        # ── 状态栏 ────────────────────────────────────────────
-        stat_f = tk.Frame(outer, bg="#aaaaaa", padx=1, pady=1)
-        stat_f.grid(row=row, column=0, sticky="ew", pady=(10, 0))
+        stat_f = tk.Frame(outer, bg=BORDER, padx=1, pady=1)
+        stat_f.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         self.status_label = tk.Label(
             stat_f, textvariable=self.status_var,
             fg=FG, bg=STAT_BG,
@@ -556,7 +584,7 @@ class CustomsDocGUI:
                 font=("Helvetica", 12, "bold"), fill="#1a4080",
             )
             if HAS_DND:
-                hint, color = "或使用上方「添加…文件」", "#555555"
+                hint, color = "或点击「添加…PDF」", "#555555"
             elif TKINTERDND2_IMPORTED:
                 hint, color = (
                     "⚠ 拖拽不可用 — 请用「添加…文件」",
@@ -586,7 +614,7 @@ class CustomsDocGUI:
             self.run_btn.config(bg=ACCENT, fg="white", cursor="hand2")
         else:
             self._run_btn_enabled = False
-            self.run_btn.config(bg=BTN_GRAY, fg="#dddddd", cursor="arrow")
+            self.run_btn.config(bg=BTN_GRAY, fg="#e9edf3", cursor="arrow")
 
     def _on_run_btn_click(self, event=None):
         if self._run_btn_enabled:
@@ -725,7 +753,13 @@ class CustomsDocGUI:
                    else Path(self.output_dir_var.get()).expanduser())
         out_dir.mkdir(parents=True, exist_ok=True)
         try:
-            subprocess.run(["open", str(out_dir)], check=True)
+            system = platform.system()
+            if system == "Darwin":
+                subprocess.run(["open", str(out_dir)], check=True)
+            elif system == "Windows":
+                os.startfile(str(out_dir))  # type: ignore[attr-defined]
+            else:
+                subprocess.run(["xdg-open", str(out_dir)], check=True)
         except Exception as e:
             messagebox.showerror("打开失败", f"无法打开输出目录:\n{e}")
 
@@ -756,7 +790,11 @@ class CustomsDocGUI:
 
     def _start_eur_standalone(self):
         pdf = self.eur_standalone_pdf_var.get().strip()
-        out = self.output_dir_var.get().strip() or self._default_output_dir
+        if getattr(self, "output_dir_entry", None) is not None:
+            out = self.output_dir_entry.get().strip()
+        else:
+            out = self.output_dir_var.get().strip()
+        out = out or self._default_output_dir
         if not pdf:
             messagebox.showwarning("提示", "请先选择发票 PDF")
             return
@@ -782,7 +820,7 @@ class CustomsDocGUI:
                 return
         self._eur_only_btn_enabled = False
         self.eur_only_btn.config(
-            bg=BTN_GRAY, fg="#eeeeee", cursor="arrow", relief="raised")
+            bg=BTN_GRAY, fg="#e9edf3", cursor="arrow", relief="raised")
         self._set_status("正在生成 EUR Invoice PDF…")
         # Tk 变量必须在主线程读取，不可在后台线程里 .get()
         ocr_lang = (self.ocr_lang_var.get().strip() or "eng")
@@ -832,7 +870,7 @@ class CustomsDocGUI:
     def _eur_only_btn_reset(self):
         self._eur_only_btn_enabled = True
         self.eur_only_btn.config(
-            bg=ACCENT, fg="white", cursor="hand2", relief="raised")
+            bg=SECONDARY_BTN_BG, fg=FG, cursor="hand2", relief="raised")
 
     def _read_eur_invoice_pdf_wanted(self) -> bool:
         return self._want_eur_invoice_pdf
@@ -889,7 +927,7 @@ class CustomsDocGUI:
 
         total = len(import_paths) + (1 if export_paths else 0)
         self._run_btn_enabled = False
-        self.run_btn.config(bg=BTN_GRAY, fg="#dddddd", cursor="arrow")
+        self.run_btn.config(bg=BTN_GRAY, fg="#e9edf3", cursor="arrow")
         self._set_status(f"正在处理 {total} 个任务，请稍候...")
         threading.Thread(
             target=self._generate,

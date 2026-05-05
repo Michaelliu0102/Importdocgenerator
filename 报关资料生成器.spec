@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='报关资料生成器',
+    name='ClearanceOS',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -40,11 +40,11 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='报关资料生成器',
+    name='ClearanceOS',
 )
 app = BUNDLE(
     coll,
-    name='报关资料生成器.app',
+    name='ClearanceOS.app',
     icon=None,
     bundle_identifier=None,
 )

@@ -18,12 +18,12 @@ python -m pip install --upgrade pyinstaller
 pyinstaller ^
   --noconfirm ^
   --windowed ^
-  --name "报关资料生成器" ^
+  --name "ClearanceOS" ^
   --add-data "templates;templates" ^
   --add-data "export_templates;export_templates" ^
   --add-data "data;data" ^
   gui_app.py
 
 echo.
-echo Build complete: dist\报关资料生成器\报关资料生成器.exe
+echo Build complete: dist\ClearanceOS\ClearanceOS.exe
 pause

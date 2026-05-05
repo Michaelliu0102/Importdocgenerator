@@ -1,5 +1,5 @@
 """
-报关资料生成器 - 主程序
+ClearanceOS - 主程序
 根据进口Invoice自动生成合同、报关单和申报要素
 """
 
@@ -19,7 +19,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 # 出口 PDF → export_templates/ 填充；若仍见「待实现」占位 txt，说明运行的是旧代码/未重打包的 .app
 EXPORT_PIPELINE_VERSION = "export_templates-v2"
-APP_VERSION_LABEL = "v4.4"
+APP_NAME = "ClearanceOS"
+APP_VERSION_LABEL = "v4.5"
 DEFAULT_IMPORT_CONFIG = "data/supplier_product_mapping_import.yaml"
 DEFAULT_EXPORT_CONFIG = "data/supplier_product_mapping_export.yaml"
 LEGACY_CONFIG = "data/supplier_product_mapping.yaml"
@@ -48,7 +49,7 @@ def _write_export_run_info(
     info = out / "_export_info.txt"
     info.write_text(
         f"pipeline: {EXPORT_PIPELINE_VERSION}\n"
-        f"generator: customs_doc_generator (对应 GUI {APP_VERSION_LABEL})\n"
+        f"generator: {APP_NAME} ({APP_VERSION_LABEL})\n"
         f"source: {source_label}\n"
         f"export_templates: {exp_dir}\n"
         f"generated:\n"
@@ -71,7 +72,7 @@ from item_declaration_mapper import (
 
 
 class CustomsDocGenerator:
-    """报关资料生成器"""
+    """ClearanceOS"""
 
     def __init__(
         self,
@@ -336,6 +337,17 @@ class CustomsDocGenerator:
         inv = _safe_filename(_inv_key or "UNKNOWN")
         generated: list[str] = []
 
+        def _add_export_issue(filename: str, detail: str) -> str:
+            note = out / filename
+            note.write_text(
+                f"【出口报关资料】{detail}\n"
+                f"文件: {source_label}\n"
+                f"模板目录: {exp_dir}\n",
+                encoding="utf-8",
+            )
+            generated.append(str(note))
+            return str(note)
+
         if fx_units_per_eur is not None and fx_units_per_eur > 0:
             src_cur = (self.invoice_data.get("currency") or "").strip().upper()
             # 币种为空时也必须换算：此前用「if src_cur and …」会跳过换算，导致永远无法生成 EUR 版 PDF。
@@ -457,6 +469,18 @@ class CustomsDocGenerator:
                 generated.append(str(outp))
             except Exception as e:
                 print(f"   出口合同填充失败: {e}")
+                _add_export_issue(
+                    f"出口合同_未生成_{inv}_{timestamp}.txt",
+                    "出口合同填充失败。\n"
+                    f"模板: {contract_tpl}\n"
+                    f"原因: {e}",
+                )
+        else:
+            print("   出口合同未生成: 缺少 export_contract.xlsx")
+            _add_export_issue(
+                f"出口合同_未生成_{inv}_{timestamp}.txt",
+                "缺少出口合同模板 export_contract.xlsx。",
+            )
 
         decl_tpl = self._find_export_template(["export_declaration.xlsx"])
         if decl_tpl:
@@ -496,6 +520,18 @@ class CustomsDocGenerator:
                 generated.append(str(outp))
             except Exception as e:
                 print(f"   出口报关单填充失败: {e}")
+                _add_export_issue(
+                    f"出口报关单_未生成_{inv}_{timestamp}.txt",
+                    "出口报关单填充失败。\n"
+                    f"模板: {decl_tpl}\n"
+                    f"原因: {e}",
+                )
+        else:
+            print("   出口报关单未生成: 缺少 export_declaration.xlsx")
+            _add_export_issue(
+                f"出口报关单_未生成_{inv}_{timestamp}.txt",
+                "缺少出口报关单模板 export_declaration.xlsx。",
+            )
 
         # 出口申报要素：必须使用 export_templates/ 下的壳（默认 申报要素总汇.docx），与进口申报要素生成方式不同
         docx_tpl = self._find_export_declaration_elements_template()
@@ -515,6 +551,18 @@ class CustomsDocGenerator:
                 generated.append(str(outp))
             except Exception as e:
                 print(f"   出口申报要素生成失败: {e}")
+                _add_export_issue(
+                    f"出口申报要素_未生成_{inv}_{timestamp}.txt",
+                    "出口申报要素生成失败。\n"
+                    f"模板: {docx_tpl}\n"
+                    f"原因: {e}",
+                )
+        else:
+            print("   出口申报要素未生成: 缺少申报要素总汇.docx")
+            _add_export_issue(
+                f"出口申报要素_未生成_{inv}_{timestamp}.txt",
+                "缺少出口申报要素模板 申报要素总汇.docx。",
+            )
 
         if not generated:
             note = out / f"出口报关_未生成_{safe}.txt"
@@ -870,7 +918,7 @@ class CustomsDocGenerator:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="报关资料生成器")
+    parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("invoice", nargs="?", help="Invoice PDF文件路径")
     parser.add_argument("-c", "--config", default=DEFAULT_IMPORT_CONFIG,
                         help="配置文件路径")
