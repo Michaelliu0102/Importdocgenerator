@@ -30,8 +30,12 @@ pyinstaller ^
 set "WARN_FILE=build\ClearanceOS\warn-ClearanceOS.txt"
 if exist "%WARN_FILE%" (
   findstr /c:"missing module named main" "%WARN_FILE%" >nul
-  if not errorlevel 1 (
+  if %errorlevel%==0 (
     echo Error: PyInstaller did not collect main.py
+    exit /b 1
+  )
+  if %errorlevel%==2 (
+    echo Error: Unable to inspect %WARN_FILE%
     exit /b 1
   )
 )
@@ -39,3 +43,4 @@ if exist "%WARN_FILE%" (
 echo.
 echo Build complete: dist\ClearanceOS\ClearanceOS.exe
 if not defined CI pause
+exit /b 0
