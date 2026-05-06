@@ -92,10 +92,19 @@ pyinstaller \
   --noconfirm \
   --windowed \
   --name "ClearanceOS" \
+  --paths "$(pwd)" \
+  --hidden-import main \
+  --hidden-import eur_invoice_standalone \
   --add-data "templates:templates" \
   --add-data "export_templates:export_templates" \
   --add-data "data:data" \
   gui_app.py
+
+WARN_FILE="build/ClearanceOS/warn-ClearanceOS.txt"
+if [[ -f "$WARN_FILE" ]] && grep -Fq "missing module named main" "$WARN_FILE"; then
+  echo "错误: PyInstaller 未能收集 main.py，构建已中止。"
+  exit 1
+fi
 
 echo
 echo "打包完成: dist/ClearanceOS.app"

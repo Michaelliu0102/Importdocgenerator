@@ -32,6 +32,7 @@ jobs:
           chmod +x scripts/inspect_macos_app.sh
           ./scripts/inspect_macos_app.sh "dist/ClearanceOS.app"
           file "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" | grep "arm64"
+          ! grep -F "missing module named main" build/ClearanceOS/warn-ClearanceOS.txt
 
       - name: Package app
         shell: bash
@@ -73,6 +74,14 @@ jobs:
           chmod +x scripts/inspect_macos_app.sh
           ./scripts/inspect_macos_app.sh "dist/ClearanceOS.app"
           file "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" | grep "x86_64"
+          ! grep -F "missing module named main" build/ClearanceOS/warn-ClearanceOS.txt
+
+      - name: Smoke-test CLI startup
+        shell: bash
+        run: |
+          xattr -dr com.apple.quarantine "dist/ClearanceOS.app" || true
+          "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" >/tmp/clearanceos-intel.log 2>&1 || true
+          ! grep -F "No module named 'main'" /tmp/clearanceos-intel.log
 
       - name: Package app
         shell: bash
@@ -115,6 +124,12 @@ jobs:
             -Path dist/ClearanceOS `
             -DestinationPath release-artifacts/ClearanceOS-windows.zip `
             -Force
+
+      - name: Validate Windows packaging
+        shell: cmd
+        run: |
+          findstr /c:"missing module named main" build\ClearanceOS\warn-ClearanceOS.txt >nul
+          if not errorlevel 1 exit /b 1
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7
