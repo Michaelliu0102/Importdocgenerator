@@ -975,6 +975,9 @@ class InvoiceParser:
             .replace("€", "¥")
             .replace("￥", "¥")
             .replace("A$", "¥")
+            .replace("$", "¥")
+            .replace("£", "¥")
+            .replace("＄", "¥")
             .replace("\u00a0", " ")
         )
         # pypdf 常为「# Item Quantity …」一行；PyMuPDF sort 可能为「#   Item」与「Quantity」大间距，不能用 "# item quantity" 连续子串。

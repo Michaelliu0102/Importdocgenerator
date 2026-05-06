@@ -255,20 +255,17 @@ def load_import_rules_for_config(
 def _match_excel_row(
     item: Dict[str, Any], excel_rows: List[MappingRow]
 ) -> Optional[MappingRow]:
-    """按出口对应表行号语义匹配；旧表则按 ITEM 子串匹配。"""
+    """按 ITEM 名称优先匹配，再按内容语义匹配特殊前缀规则。"""
     description = _item_desc_for_declaration(item)
     d = (description or "").strip().lower()
     if not excel_rows:
         return None
 
-    # A2-A20: ITEM on Invoice，按英文 ITEM 名称匹配，取最长命中。
+    # 普通 ITEM 名称：按英文 ITEM 子串匹配，取最长命中。
     best: Optional[MappingRow] = None
     best_len = -1
     if d:
         for row in excel_rows:
-            row_no = int(row.get("row_no") or 0)
-            if row_no and not (2 <= row_no <= 20):
-                continue
             item_en = str(row.get("item") or "").strip()
             ie = item_en.lower()
             if not ie:
@@ -281,22 +278,40 @@ def _match_excel_row(
 
     candidates = _item_prefix_candidates(item)
     for row in excel_rows:
-        row_no = int(row.get("row_no") or 0)
         raw_item = str(row.get("item") or "").strip()
         prefixes = [_normalize_prefix_token(p) for p in raw_item.split("/") if p]
-
-        if row_no == 21:
+        special_rule = _special_excel_prefix_rule(raw_item, prefixes)
+        if special_rule == "four_digit_prefix":
             if any(_candidate_starts_with(candidates, p, 4) for p in prefixes):
                 return row
-        elif row_no == 22:
+        elif special_rule == "full_token_prefix":
             if any(_candidate_starts_with(candidates, p, len(p)) for p in prefixes):
                 return row
-        elif 23 <= row_no <= 25:
+        elif special_rule == "fa_prefix":
             if any(_candidate_starts_with(candidates, p, 6) for p in prefixes):
                 return row
-        elif row_no == 26:
+        elif special_rule == "two_char_prefix":
             if any(_candidate_starts_with(candidates, p, 2) for p in prefixes):
                 return row
+    return None
+
+
+def _special_excel_prefix_rule(raw_item: str, prefixes: List[str]) -> Optional[str]:
+    if not prefixes:
+        return None
+
+    if all(re.fullmatch(r"\d{4}", p) for p in prefixes):
+        return "four_digit_prefix"
+
+    if all(p.startswith("FA") and len(p) >= 6 for p in prefixes):
+        return "fa_prefix"
+
+    if len(prefixes) == 1 and prefixes[0] == "MF":
+        return "two_char_prefix"
+
+    if any(p in {"NAPPA", "VERONA", "ROMA"} for p in prefixes):
+        return "full_token_prefix"
+
     return None
 
 
