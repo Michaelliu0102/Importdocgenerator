@@ -27,15 +27,28 @@ pyinstaller ^
   --add-data "data;data" ^
   gui_app.py
 
-set "WARN_FILE=build\ClearanceOS\warn-ClearanceOS.txt"
-if exist "%WARN_FILE%" (
-  findstr /c:"missing module named main" "%WARN_FILE%" >nul
-  if %errorlevel%==0 (
-    echo Error: PyInstaller did not collect main.py
-    exit /b 1
-  )
+set "TOC_FILE=build\ClearanceOS\PYZ-00.toc"
+if not exist "%TOC_FILE%" (
+  echo Error: Missing %TOC_FILE%
+  exit /b 1
+)
+
+findstr /c:"('main'," "%TOC_FILE%" >nul
+if not %errorlevel%==0 (
+  echo Error: PyInstaller output does not contain main
+  exit /b 1
+)
+
+findstr /c:"('eur_invoice_standalone'," "%TOC_FILE%" >nul
+if not %errorlevel%==0 (
+  echo Error: PyInstaller output does not contain eur_invoice_standalone
+  exit /b 1
+)
+
+if exist "build\ClearanceOS\warn-ClearanceOS.txt" (
+  findstr /c:"missing module named main" "build\ClearanceOS\warn-ClearanceOS.txt" >nul
   if %errorlevel%==2 (
-    echo Error: Unable to inspect %WARN_FILE%
+    echo Error: Unable to inspect build\ClearanceOS\warn-ClearanceOS.txt
     exit /b 1
   )
 )

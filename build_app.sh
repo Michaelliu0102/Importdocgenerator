@@ -100,9 +100,13 @@ pyinstaller \
   --add-data "data:data" \
   gui_app.py
 
-WARN_FILE="build/ClearanceOS/warn-ClearanceOS.txt"
-if [[ -f "$WARN_FILE" ]] && grep -Fq "missing module named main" "$WARN_FILE"; then
-  echo "错误: PyInstaller 未能收集 main.py，构建已中止。"
+TOC_FILE="build/ClearanceOS/PYZ-00.toc"
+if [[ ! -f "$TOC_FILE" ]] || ! grep -Fq "('main'," "$TOC_FILE"; then
+  echo "错误: PyInstaller 产物中未找到 main 模块，构建已中止。"
+  exit 1
+fi
+if ! grep -Fq "('eur_invoice_standalone'," "$TOC_FILE"; then
+  echo "错误: PyInstaller 产物中未找到 eur_invoice_standalone 模块，构建已中止。"
   exit 1
 fi
 

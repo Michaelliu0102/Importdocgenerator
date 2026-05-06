@@ -32,7 +32,8 @@ jobs:
           chmod +x scripts/inspect_macos_app.sh
           ./scripts/inspect_macos_app.sh "dist/ClearanceOS.app"
           file "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" | grep "arm64"
-          ! grep -F "missing module named main" build/ClearanceOS/warn-ClearanceOS.txt
+          grep -F "('main'," build/ClearanceOS/PYZ-00.toc
+          grep -F "('eur_invoice_standalone'," build/ClearanceOS/PYZ-00.toc
 
       - name: Package app
         shell: bash
@@ -74,7 +75,8 @@ jobs:
           chmod +x scripts/inspect_macos_app.sh
           ./scripts/inspect_macos_app.sh "dist/ClearanceOS.app"
           file "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" | grep "x86_64"
-          ! grep -F "missing module named main" build/ClearanceOS/warn-ClearanceOS.txt
+          grep -F "('main'," build/ClearanceOS/PYZ-00.toc
+          grep -F "('eur_invoice_standalone'," build/ClearanceOS/PYZ-00.toc
 
       - name: Smoke-test CLI startup
         shell: bash
@@ -136,9 +138,10 @@ jobs:
       - name: Validate Windows packaging
         shell: cmd
         run: |
-          findstr /c:"missing module named main" build\ClearanceOS\warn-ClearanceOS.txt >nul
-          if %errorlevel%==0 exit /b 1
-          if %errorlevel%==2 exit /b 1
+          findstr /c:"('main'," build\ClearanceOS\PYZ-00.toc >nul
+          if not %errorlevel%==0 exit /b 1
+          findstr /c:"('eur_invoice_standalone'," build\ClearanceOS\PYZ-00.toc >nul
+          if not %errorlevel%==0 exit /b 1
           exit /b 0
 
       - name: Upload Windows artifact
