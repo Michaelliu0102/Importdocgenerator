@@ -13,10 +13,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -35,7 +35,7 @@ jobs:
             "release-artifacts/ClearanceOS-mac-intel.zip"
 
       - name: Upload macOS Intel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ClearanceOS-mac-intel
           path: release-artifacts/ClearanceOS-mac-intel.zip
@@ -47,10 +47,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -69,7 +69,7 @@ jobs:
             -Force
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ClearanceOS-windows
           path: release-artifacts/ClearanceOS-windows.zip
@@ -87,13 +87,13 @@ jobs:
 
     steps:
       - name: Download macOS Intel artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ClearanceOS-mac-intel
           path: release-artifacts/mac-intel
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: ClearanceOS-windows
           path: release-artifacts/windows
