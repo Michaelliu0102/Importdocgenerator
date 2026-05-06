@@ -80,8 +80,16 @@ jobs:
         shell: bash
         run: |
           xattr -dr com.apple.quarantine "dist/ClearanceOS.app" || true
-          "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" >/tmp/clearanceos-intel.log 2>&1 || true
+          "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" >/tmp/clearanceos-intel.log 2>&1 &
+          APP_PID=$!
+          sleep 5
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            cat /tmp/clearanceos-intel.log
+          fi
           ! grep -F "No module named 'main'" /tmp/clearanceos-intel.log
+          ! grep -F "Failed to execute script" /tmp/clearanceos-intel.log
+          kill "$APP_PID" 2>/dev/null || true
+          wait "$APP_PID" 2>/dev/null || true
 
       - name: Package app
         shell: bash
