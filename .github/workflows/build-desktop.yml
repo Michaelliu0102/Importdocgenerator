@@ -7,6 +7,47 @@ on:
       - "v*"
 
 jobs:
+  build-mac-arm64:
+    name: Build macOS Apple Silicon
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build ClearanceOS.app
+        shell: bash
+        run: |
+          chmod +x build_app.sh
+          TARGET_ARCH=arm64 ./build_app.sh
+
+      - name: Validate macOS app architecture
+        shell: bash
+        run: |
+          chmod +x scripts/inspect_macos_app.sh
+          ./scripts/inspect_macos_app.sh "dist/ClearanceOS.app"
+          file "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" | grep "arm64"
+
+      - name: Package app
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/ClearanceOS.app" \
+            "release-artifacts/ClearanceOS-mac-arm64.zip"
+
+      - name: Upload macOS Apple Silicon artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ClearanceOS-mac-arm64
+          path: release-artifacts/ClearanceOS-mac-arm64.zip
+          if-no-files-found: error
+
   build-mac-intel:
     name: Build macOS Intel
     runs-on: macos-15-intel
@@ -24,7 +65,14 @@ jobs:
         shell: bash
         run: |
           chmod +x build_app.sh
-          ./build_app.sh
+          TARGET_ARCH=x86_64 ./build_app.sh
+
+      - name: Validate macOS app architecture
+        shell: bash
+        run: |
+          chmod +x scripts/inspect_macos_app.sh
+          ./scripts/inspect_macos_app.sh "dist/ClearanceOS.app"
+          file "dist/ClearanceOS.app/Contents/MacOS/ClearanceOS" | grep "x86_64"
 
       - name: Package app
         shell: bash
@@ -79,6 +127,7 @@ jobs:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
+      - build-mac-arm64
       - build-mac-intel
       - build-windows
     runs-on: ubuntu-latest
@@ -86,6 +135,12 @@ jobs:
       contents: write
 
     steps:
+      - name: Download macOS Apple Silicon artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: ClearanceOS-mac-arm64
+          path: release-artifacts/mac-arm64
+
       - name: Download macOS Intel artifact
         uses: actions/download-artifact@v5
         with:
@@ -104,11 +159,13 @@ jobs:
         shell: bash
         run: |
           gh release create "${GITHUB_REF_NAME}" \
+            "release-artifacts/mac-arm64/ClearanceOS-mac-arm64.zip" \
             "release-artifacts/mac-intel/ClearanceOS-mac-intel.zip" \
             "release-artifacts/windows/ClearanceOS-windows.zip" \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes \
           || gh release upload "${GITHUB_REF_NAME}" \
+            "release-artifacts/mac-arm64/ClearanceOS-mac-arm64.zip" \
             "release-artifacts/mac-intel/ClearanceOS-mac-intel.zip" \
             "release-artifacts/windows/ClearanceOS-windows.zip" \
             --clobber

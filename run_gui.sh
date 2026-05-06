@@ -6,7 +6,18 @@ cd "$(dirname "$0")"
 # Prefer Homebrew Python, then fall back to system python if needed.
 pick_python_with_tk() {
   local py
-  for py in /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.14 /opt/homebrew/bin/python3 /usr/bin/python3 python3; do
+  for py in \
+    /usr/local/bin/python3.11 \
+    /opt/homebrew/bin/python3.11 \
+    /usr/local/bin/python3.12 \
+    /opt/homebrew/bin/python3.12 \
+    /usr/local/bin/python3.13 \
+    /opt/homebrew/bin/python3.13 \
+    /usr/local/bin/python3 \
+    /opt/homebrew/bin/python3 \
+    /usr/bin/python3 \
+    python3
+  do
     if [[ -x "$py" ]]; then
       if "$py" - <<'PYEOF' >/dev/null 2>&1
 import tkinter
@@ -24,7 +35,7 @@ PYEOF
 PY_BIN="$(pick_python_with_tk || true)"
 if [[ -z "${PY_BIN:-}" ]]; then
   echo "错误: 未找到带 Tk 8.6+ 的 Python。"
-  echo "请运行: brew install python-tk@3.14"
+  echo "Apple Silicon 可安装 /opt/homebrew/bin/python3.13，Intel Mac 可安装 /usr/local/bin/python3.11。"
   exit 1
 fi
 

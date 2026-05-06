@@ -54,14 +54,18 @@ pip install -r requirements.txt
 
 产物包括：
 
+- `ClearanceOS-mac-arm64.zip`
 - `ClearanceOS-mac-intel.zip`
 - `ClearanceOS-windows.zip`
 
 说明：
 
-- `macOS Intel` 构建运行在 `macos-13` runner
+- `macOS Apple Silicon` 构建运行在 `macos-15` runner
+- `macOS Intel` 构建运行在 `macos-15-intel` runner
 - `Windows` 构建运行在 `windows-2022` runner
 - Windows 压缩包内包含整个 `dist/ClearanceOS` 目录，用户解压后运行其中的 `ClearanceOS.exe`
+- 发给 M 芯片 Mac 的使用 `ClearanceOS-mac-arm64.zip`
+- 发给 Intel Mac 的必须是 `ClearanceOS-mac-intel.zip`，不要把 Apple Silicon 本地构建出的 `arm64` `.app` 直接发给 `iMac 2017 / macOS 12` 机器
 
 ## Invoice 可编辑 PDF 模板（macOS 预览可修改）
 
