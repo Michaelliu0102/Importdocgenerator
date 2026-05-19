@@ -16,6 +16,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from main import CustomsDocGenerator
+from output_paths import default_output_dir_for_base_dir
 
 APP_NAME = "ClearanceOS"
 APP_VERSION = "v4.5"
@@ -188,7 +189,9 @@ class CustomsDocGUI:
         self.export_paths: list[str] = []
         self.export_display: list[str] = []
         self.last_output_folder = None
-        self._default_output_dir = str(self.base_dir / "output")
+        self._default_output_dir = str(
+            default_output_dir_for_base_dir(self.base_dir, APP_NAME)
+        )
         self.output_dir_var = tk.StringVar(value=self._default_output_dir)
         self.ocr_enabled_var = tk.BooleanVar(value=True)
         self.ocr_lang_var = tk.StringVar(value="eng")
