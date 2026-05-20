@@ -7,6 +7,11 @@ import yaml
 from typing import Dict, Any, Optional
 
 
+def _normalized_text(value: Any) -> str:
+    """Normalize optional text inputs from OCR/parsers before matching."""
+    return str(value or "").strip()
+
+
 class ConfigLoader:
     """配置加载器"""
 
@@ -61,9 +66,11 @@ class ConfigLoader:
         返回 (supplier_code, supplier_info) 或 None
         """
         suppliers = self.config.get("suppliers", {})
-        supplier_name_lower = supplier_name.lower()
+        supplier_name_lower = _normalized_text(supplier_name).lower()
+        if not supplier_name_lower:
+            return None
         for code, info in suppliers.items():
-            supplier_name_cfg = info.get("name", "").lower()
+            supplier_name_cfg = _normalized_text(info.get("name")).lower()
             # 匹配全称或简称
             if supplier_name_cfg in supplier_name_lower or supplier_name_lower in supplier_name_cfg:
                 return code, info
@@ -122,8 +129,12 @@ class ConfigLoader:
         返回 (product_code, product_info) 或 None
         """
         products = self.config.get("product_categories", {})
+        product_name = _normalized_text(product_name)
+        if not product_name:
+            return None
         for code, info in products.items():
-            if info.get("name", "") in product_name or product_name in info.get("name", ""):
+            product_name_cfg = _normalized_text(info.get("name"))
+            if product_name_cfg in product_name or product_name in product_name_cfg:
                 return code, info
         return None
 
@@ -132,12 +143,15 @@ class ConfigLoader:
         根据商品描述关键词匹配产品，可选根据供应商过滤
         """
         products = self.config.get("product_categories", {})
+        description = _normalized_text(description)
         description_lower = description.lower()
+        if not description_lower:
+            return None
 
         for code, info in products.items():
-            product_name = info.get("name", "").lower()
-            category = info.get("category", "").lower()
-            sub_category = info.get("sub_category", "").lower()
+            product_name = _normalized_text(info.get("name")).lower()
+            category = _normalized_text(info.get("category")).lower()
+            sub_category = _normalized_text(info.get("sub_category")).lower()
             product_supplier = info.get("supplier", "")
 
             # 如果指定了供应商，先检查供应商匹配
@@ -234,7 +248,9 @@ class ConfigLoader:
         - 100% pes → HS 5407520000
         """
         products = self.config.get("product_categories", {})
-        description_lower = description.lower()
+        description_lower = _normalized_text(description).lower()
+        if not description_lower:
+            return None
 
         # 兼容旧入口；主要流程会在 item_declaration_mapper 中按实际百分比动态归类。
         composition_map = [
