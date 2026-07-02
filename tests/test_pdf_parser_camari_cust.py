@@ -4,6 +4,22 @@ from pdf_parser import InvoiceParser
 
 
 class CamariCustItemParsingTest(unittest.TestCase):
+    def test_prefers_cny_terms_currency_over_eur_bank_account_text(self):
+        parser = InvoiceParser("__dummy__.pdf")
+        parser._fmt = "camari_cust"
+        parser.raw_text = """
+Due Date
+Currency
+CNY
+Sales Order
+￥377.00
+Subtotal
+Total
+33090050201000003421 (EUR)
+"""
+
+        self.assertEqual("CNY", parser._extract_currency())
+
     def test_parses_usd_item_lines(self):
         parser = InvoiceParser("__dummy__.pdf")
         parser.raw_text = """

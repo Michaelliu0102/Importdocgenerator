@@ -565,7 +565,7 @@ class InvoiceParser:
         # CustInvc: "1/4/2026 JPY Dap Sales Order"
         if self._fmt == "camari_cust":
             m = re.search(
-                r"\d{1,2}/\d{1,2}/\d{4}\s+(?:JPY|EUR|USD)\s+([A-Za-z]{2,4})\b",
+                r"\d{1,2}/\d{1,2}/\d{4}\s+(?:JPY|EUR|USD|AUD|GBP|CNY|RMB)\s+([A-Za-z]{2,4})\b",
                 self.raw_text,
             )
             if m:
@@ -1573,24 +1573,38 @@ class InvoiceParser:
     # Currency
     # =========================================================================
     def _extract_currency(self) -> Optional[str]:
-        # CustInvc：正文为 JPY，但第 2 页银行账号含 (EUR)/(USD)，不能先看全文字符串
+        # CustInvc：正文币种在第 1 页条款区；第 2 页银行账号常含 (EUR)/(USD)，
+        # 因此必须优先读取条款区，不能先扫全文里的 EUR/USD。
         if self._fmt == "camari_cust":
             # pypdf 常把 Terms 压成一行，如 "4/4/2026 JPY232,454=127"（币种与金额间无空格），
             # 旧正则要求币种后必须有空格，会漏匹配并误落到下面的 \bEUR\b（例如 "2EUR" 碎片）。
             m = re.search(
-                r"\d{1,2}/\d{1,2}/\d{4}\s+(JPY|EUR|USD|AUD|GBP)",
+                r"\d{1,2}/\d{1,2}/\d{4}\s+(JPY|EUR|USD|AUD|GBP|CNY|RMB)",
                 self.raw_text,
             )
             if m:
-                return m.group(1)
+                cur = m.group(1)
+                return "CNY" if cur == "RMB" else cur
+            m = re.search(
+                r"\bCurrency\b[\s\S]{0,80}?\b(JPY|EUR|USD|AUD|GBP|CNY|RMB)\b",
+                self.raw_text,
+                re.IGNORECASE,
+            )
+            if m:
+                cur = m.group(1).upper()
+                return "CNY" if cur == "RMB" else cur
             if re.search(r"\bJPY\b", self.raw_text):
                 return "JPY"
+            if re.search(r"\b(?:CNY|RMB)\b", self.raw_text, re.IGNORECASE) or "￥" in self.raw_text:
+                return "CNY"
             if re.search(r"\bEUR\b", self.raw_text):
                 return "EUR"
             if re.search(r"\bAUD\b", self.raw_text) or "A$" in self.raw_text:
                 return "AUD"
 
         text = self.raw_text
+        if re.search(r"\b(?:CNY|RMB)\b", text, re.IGNORECASE) or "￥" in text:
+            return "CNY"
         if "EUR" in text or "€" in text or "Eur" in text:
             return "EUR"
         if re.search(r"\bAUD\b", text) or "A$" in text:
