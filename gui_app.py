@@ -19,7 +19,7 @@ from main import CustomsDocGenerator
 from output_paths import default_output_dir_for_base_dir
 
 APP_NAME = "ClearanceOS"
-APP_VERSION = "v4.5"
+APP_VERSION = "v4.5.4"
 
 
 def _install_tix_stub():

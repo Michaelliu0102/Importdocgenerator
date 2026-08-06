@@ -20,7 +20,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 # 出口 PDF → export_templates/ 填充；若仍见「待实现」占位 txt，说明运行的是旧代码/未重打包的 .app
 EXPORT_PIPELINE_VERSION = "export_templates-v2"
 APP_NAME = "ClearanceOS"
-APP_VERSION_LABEL = "v4.5"
+APP_VERSION_LABEL = "v4.5.4"
 DEFAULT_IMPORT_CONFIG = "data/supplier_product_mapping_import.yaml"
 DEFAULT_EXPORT_CONFIG = "data/supplier_product_mapping_export.yaml"
 LEGACY_CONFIG = "data/supplier_product_mapping.yaml"
