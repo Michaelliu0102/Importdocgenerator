@@ -73,15 +73,23 @@ def apply_eur_conversion(
         if "amount" in it:
             it["amount"] = to_eur(it.get("amount"))
 
-    total_sum = 0.0
-    for it in out.get("items") or []:
-        f = _to_float(it.get("amount"))
-        if f is not None:
-            total_sum += f
-    if total_sum > 0:
-        out["total_amount"] = _fmt_eur(total_sum)
-    elif out.get("total_amount"):
+    if out.get("transport_cost") not in (None, ""):
+        out["transport_cost"] = to_eur(out.get("transport_cost"))
+
+    # 发票总价可能包含未列入报关商品的 Transport Cost 等费用，必须优先按原票总价换算。
+    if out.get("total_amount") not in (None, ""):
         out["total_amount"] = to_eur(out.get("total_amount"))
+    else:
+        total_sum = 0.0
+        for it in out.get("items") or []:
+            f = _to_float(it.get("amount"))
+            if f is not None:
+                total_sum += f
+        transport = _to_float(out.get("transport_cost"))
+        if transport is not None:
+            total_sum += transport
+        if total_sum > 0:
+            out["total_amount"] = _fmt_eur(total_sum)
 
     out["currency"] = "EUR"
     out["original_currency"] = orig_cur

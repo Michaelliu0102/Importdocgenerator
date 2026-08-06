@@ -18,7 +18,18 @@ def _parse_euro_amount(s: str) -> str:
 
 def _parse_camari_cust_number(s: str) -> str:
     """CustInvc 金额：支持欧式小数逗号、千分位空格（如 €1 800,00、1.800,00）及日元式整数逗号。"""
-    s = (s or "").replace("¥", "").replace("€", "").replace("ĉ", "").replace("\u00a0", " ").strip()
+    s = (
+        (s or "")
+        .replace("A$", "")
+        .replace("¥", "")
+        .replace("￥", "")
+        .replace("€", "")
+        .replace("ĉ", "")
+        .replace("$", "")
+        .replace("£", "")
+        .replace("\u00a0", " ")
+        .strip()
+    )
     s = re.sub(r"\s+", "", s)
     if not s:
         return ""
@@ -213,6 +224,8 @@ class InvoiceParser:
             "country_of_origin": self._extract_country_of_origin(),
             "items": items,
             "customs_items": customs_items,
+            # 运费等服务费用不应进入报关商品，但 EUR Invoice 仍须单独换算并覆盖。
+            "transport_cost": self._extract_transport_cost(),
             "total_amount": self._compute_total(items),
             "currency": self._extract_currency(),
             "net_weight": self._extract_weight("NET"),
@@ -1493,9 +1506,35 @@ class InvoiceParser:
     # =========================================================================
     # Compute Total
     # =========================================================================
+    def _extract_transport_cost(self) -> Optional[str]:
+        """读取 CAMARI CustInvc 的 Transport Cost，不把它混入报关商品。"""
+        if self._fmt != "camari_cust":
+            return None
+
+        currency_amount_re = re.compile(
+            r"(?:A\$|[¥￥ĉ€$£])\s*"
+            r"((?:\d{1,3}(?:[,\u00a0 ]\d{3})+|\d+)(?:[.,]\d{1,2})?)"
+        )
+        for line in self.raw_text.splitlines():
+            if not re.search(r"\bTransport\s+Cost\b", line, re.IGNORECASE):
+                continue
+            amounts = currency_amount_re.findall(line)
+            if amounts:
+                # Unit Price 与 Amount 通常相同；取最后一个即该费用行金额。
+                return _parse_camari_cust_number(amounts[-1])
+        return None
+
     def _compute_total(self, items: list) -> Optional[str]:
         if self._fmt == "camari_cust":
-            t = self.raw_text.replace("ĉ", "¥").replace("\u00a0", " ")
+            t = (
+                self.raw_text.replace("ĉ", "¥")
+                .replace("￥", "¥")
+                .replace("€", "¥")
+                .replace("A$", "¥")
+                .replace("$", "¥")
+                .replace("£", "¥")
+                .replace("\u00a0", " ")
+            )
             before_bank = t.split("Bank Information")[0]
             for line in before_bank.split("\n"):
                 s = line.strip()

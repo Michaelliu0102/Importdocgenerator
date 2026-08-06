@@ -191,6 +191,11 @@ def _build_replacement_map(
             if old_v is not None and new_v is not None:
                 _add_amount_variants(rmap, old_v, _fmt_eur(new_v))
 
+    transport_o = _to_float(inv_orig.get("transport_cost"))
+    transport_e = _to_float(inv_eur.get("transport_cost"))
+    if transport_o is not None and transport_e is not None:
+        _add_amount_variants(rmap, transport_o, _fmt_eur(transport_e))
+
     tot_o = _to_float(inv_orig.get("total_amount"))
     tot_e = _to_float(inv_eur.get("total_amount"))
     if tot_o is not None and tot_e is not None:
@@ -211,6 +216,15 @@ def _build_replacement_map(
                 old_spc = _fmt_eur_legacy_space_no_cents(nv)
                 if old_spc != new_s:
                     rmap[old_spc] = new_s
+    if transport_e is not None:
+        new_s = _fmt_eur(transport_e)
+        for old_s in (
+            _fmt_eur_us(transport_e),
+            _fmt_eur_legacy_dot_thousands(transport_e),
+            _fmt_eur_legacy_space_no_cents(transport_e),
+        ):
+            if old_s != new_s:
+                rmap[old_s] = new_s
     if tot_e is not None:
         te = float(tot_e)
         new_s = _fmt_eur(te)
